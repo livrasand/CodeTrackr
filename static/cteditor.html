@@ -1,0 +1,876 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Plugin Editor — CodeTrackr</title>
+  <link rel="icon" type="image/png" href="/static/images/logo.png"/>
+  <link rel="stylesheet" href="/static/css/main.css"/>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.17/codemirror.min.css"/>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.17/theme/dracula.min.css"/>
+  <style>
+    html, body {
+      height: 100%;
+    }
+
+    body {
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+      height: 100vh;
+    }
+
+    /* ── Topbar ── */
+    .editor-topbar {
+      display: flex;
+      align-items: center;
+      gap: 16px;
+      padding: 0 24px;
+      height: 52px;
+      background: var(--bg-card);
+      border-bottom: 1px solid var(--border);
+      flex-shrink: 0;
+    }
+
+    .editor-topbar-logo {
+      font-family: var(--font-mono);
+      font-weight: 600;
+      font-size: 14px;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      color: var(--text-main);
+    }
+
+    .editor-topbar-sep {
+      width: 1px;
+      height: 18px;
+      background: var(--border-focus);
+    }
+
+    .editor-topbar-title {
+      font-family: var(--font-mono);
+      font-size: 11px;
+      text-transform: uppercase;
+      letter-spacing: 0.1em;
+      color: var(--text-dark);
+    }
+
+    .editor-topbar-actions {
+      margin-left: auto;
+      display: flex;
+      gap: 8px;
+      align-items: center;
+    }
+
+    .btn-run {
+      border-color: var(--border-focus) !important;
+      color: var(--text-main) !important;
+    }
+
+    .btn-run:hover:not(:disabled) {
+      background: var(--bg-hover) !important;
+    }
+
+    .btn-run:disabled {
+      opacity: 0.4;
+      cursor: not-allowed;
+    }
+
+    /* ── Layout ── */
+    .editor-layout {
+      display: flex;
+      flex: 1;
+      overflow: hidden;
+      min-height: 0;
+    }
+
+    /* ── Editor pane ── */
+    .editor-pane {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      border-right: 1px solid var(--border);
+      min-width: 0;
+    }
+
+    .pane-header {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 6px 16px;
+      background: var(--bg-card);
+      border-bottom: 1px solid var(--border);
+      font-family: var(--font-mono);
+      font-size: 11px;
+      color: var(--text-dark);
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      flex-shrink: 0;
+    }
+
+    .pane-dot {
+      width: 7px;
+      height: 7px;
+      border-radius: 50%;
+      flex-shrink: 0;
+    }
+
+    .dot-js  { background: #f7df1e; }
+    .dot-out { background: #3f3f46; }
+
+    .CodeMirror {
+      flex: 1;
+      height: 100% !important;
+      font-size: 13px;
+      line-height: 1.65;
+      font-family: var(--font-mono);
+      background: var(--bg) !important;
+    }
+
+    .CodeMirror-scroll { height: 100%; }
+
+    .editor-wrapper {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }
+
+    /* ── Trigger bar ── */
+    .trigger-bar {
+      display: flex;
+      gap: 8px;
+      align-items: center;
+      padding: 8px 16px;
+      border-top: 1px solid var(--border);
+      background: var(--bg-card);
+      flex-shrink: 0;
+      flex-wrap: wrap;
+    }
+
+    .trigger-label {
+      font-family: var(--font-mono);
+      font-size: 10px;
+      text-transform: uppercase;
+      letter-spacing: 0.1em;
+      color: var(--text-dark);
+      margin-right: 4px;
+    }
+
+    .trigger-btn {
+      padding: 3px 10px;
+      border-radius: var(--radius-pill);
+      font-family: var(--font-mono);
+      font-size: 11px;
+      cursor: pointer;
+      border: 1px solid var(--border);
+      background: transparent;
+      color: var(--text-dark);
+      transition: all var(--transition);
+    }
+
+    .trigger-btn.active {
+      border-color: var(--border-focus);
+      color: var(--text-main);
+      background: var(--bg-hover);
+    }
+
+    .trigger-btn:hover:not(.active) {
+      border-color: var(--border-focus);
+      color: var(--text-muted);
+    }
+
+    .trigger-sep {
+      width: 1px;
+      height: 14px;
+      background: var(--border-focus);
+      margin: 0 4px;
+      flex-shrink: 0;
+    }
+
+    /* ── Output pane ── */
+    .output-pane {
+      width: 400px;
+      flex-shrink: 0;
+      display: flex;
+      flex-direction: column;
+      background: var(--bg);
+    }
+
+    .output-body {
+      flex: 1;
+      overflow-y: auto;
+      padding: 14px 16px;
+      font-family: var(--font-mono);
+      font-size: 12px;
+      line-height: 1.7;
+    }
+
+    .output-body::-webkit-scrollbar { width: 4px; }
+    .output-body::-webkit-scrollbar-track { background: transparent; }
+    .output-body::-webkit-scrollbar-thumb { background: var(--border-focus); border-radius: 2px; }
+
+    .out-idle    { color: var(--text-dark); font-style: italic; }
+    .out-running { color: var(--text-muted); }
+    .out-line    { color: var(--text-muted); white-space: pre-wrap; word-break: break-all; }
+    .out-error   { color: #e53; white-space: pre-wrap; word-break: break-all; }
+    .out-success { color: var(--text-main); }
+    .out-warn    { color: #a1a1aa; white-space: pre-wrap; word-break: break-all; }
+    .out-meta    { color: var(--text-dark); font-size: 10px; margin-top: 8px; }
+    .out-separator { border: none; border-top: 1px solid var(--border); margin: 10px 0; }
+
+    /* ── Status badge ── */
+    .status-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      font-family: var(--font-mono);
+      font-size: 10px;
+      padding: 2px 8px;
+      border-radius: var(--radius-pill);
+      border: 1px solid var(--border);
+    }
+
+    .status-ok  { border-color: var(--border-focus); color: var(--text-main); }
+    .status-err { border-color: #e53; color: #e53; }
+    .status-run { border-color: var(--border-focus); color: var(--text-muted); }
+
+    /* ── User pill in topbar ── */
+    .topbar-user {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-family: var(--font-mono);
+      font-size: 11px;
+      color: var(--text-dark);
+    }
+    .topbar-user img {
+      width: 22px;
+      height: 22px;
+      border-radius: 50%;
+      border: 1px solid var(--border);
+      object-fit: cover;
+    }
+
+    /* ── Metadata panel ── */
+    .meta-pane {
+      width: 260px;
+      flex-shrink: 0;
+      display: flex;
+      flex-direction: column;
+      border-left: 1px solid var(--border);
+      background: var(--bg-card);
+      overflow-y: auto;
+    }
+    .meta-pane::-webkit-scrollbar { width: 4px; }
+    .meta-pane::-webkit-scrollbar-track { background: transparent; }
+    .meta-pane::-webkit-scrollbar-thumb { background: var(--border-focus); border-radius: 2px; }
+
+    .meta-section {
+      padding: 14px 16px;
+      border-bottom: 1px solid var(--border);
+    }
+    .meta-section:last-child { border-bottom: none; }
+
+    .meta-section-title {
+      font-family: var(--font-mono);
+      font-size: 10px;
+      text-transform: uppercase;
+      letter-spacing: 0.1em;
+      color: var(--text-dark);
+      margin-bottom: 12px;
+    }
+
+    .meta-field {
+      margin-bottom: 10px;
+    }
+    .meta-field:last-child { margin-bottom: 0; }
+
+    .meta-label {
+      font-family: var(--font-mono);
+      font-size: 10px;
+      color: var(--text-dark);
+      margin-bottom: 4px;
+      display: block;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+    }
+
+    .meta-input {
+      width: 100%;
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
+      color: var(--text-main);
+      font-family: var(--font-mono);
+      font-size: 12px;
+      padding: 5px 8px;
+      box-sizing: border-box;
+      transition: border-color var(--transition);
+      outline: none;
+    }
+    .meta-input:focus {
+      border-color: var(--border-focus);
+    }
+    .meta-input::placeholder {
+      color: var(--text-dark);
+    }
+    textarea.meta-input {
+      resize: vertical;
+      min-height: 60px;
+      line-height: 1.5;
+    }
+
+    .btn-publish {
+      width: 100%;
+      justify-content: center;
+      font-family: var(--font-mono);
+      font-size: 11px;
+      letter-spacing: 0.05em;
+      border-color: var(--border-focus) !important;
+      color: var(--text-main) !important;
+      margin-top: 4px;
+    }
+    .btn-publish:hover:not(:disabled) {
+      background: var(--bg-hover) !important;
+    }
+    .btn-publish:disabled {
+      opacity: 0.4;
+      cursor: not-allowed;
+    }
+
+    .publish-status {
+      font-family: var(--font-mono);
+      font-size: 10px;
+      margin-top: 8px;
+      min-height: 14px;
+      text-align: center;
+    }
+    .publish-ok  { color: var(--text-main); }
+    .publish-err { color: #e53; }
+  </style>
+</head>
+<body>
+
+<!-- TOPBAR -->
+<div class="editor-topbar">
+  <a href="/" class="editor-topbar-logo">CodeTrackr</a>
+  <div class="editor-topbar-sep"></div>
+  <span class="editor-topbar-title">Plugin Editor</span>
+  <a href="/docs" class="editor-topbar-title" style="text-decoration:none;" title="Documentation">Docs</a>
+  <div class="editor-topbar-actions">
+    <div class="topbar-user" id="topbarUser" style="display:none">
+      <img id="topbarAvatar" src="" alt="">
+      <span id="topbarUsername"></span>
+      <div class="editor-topbar-sep"></div>
+    </div>
+    <button class="btn" onclick="importPlugin()" title="Import plugin (.js or .ctplugin)">Import</button>
+    <button class="btn" onclick="exportPlugin()" title="Export as .ctplugin">Export</button>
+    <div class="editor-topbar-sep"></div>
+    <button class="btn" onclick="clearEditor()">Clear</button>
+    <button class="btn btn-run" id="runBtn" onclick="runCode()">▶ Run</button>
+  </div>
+  <input type="file" id="importInput" accept=".js,.ctplugin" style="display:none" onchange="handleImport(event)">
+</div>
+
+<div class="editor-layout">
+
+  <!-- Editor -->
+  <div class="editor-pane">
+    <div class="pane-header">
+      <span class="pane-dot dot-js"></span>
+      plugin.js
+    </div>
+    <div class="editor-wrapper">
+      <textarea id="editor" autocomplete="off"></textarea>
+    </div>
+    <div class="trigger-bar">
+      <span class="trigger-label">Simulate:</span>
+      <button class="trigger-btn active" data-trigger="on_heartbeat" onclick="selectTrigger(this)">on_heartbeat</button>
+      <button class="trigger-btn" data-trigger="on_tick" onclick="selectTrigger(this)">on_tick</button>
+      <button class="trigger-btn" data-trigger="on_install" onclick="selectTrigger(this)">on_install</button>
+      <div class="trigger-sep"></div>
+      <button class="trigger-btn" data-trigger="widget" onclick="selectTrigger(this)">widget</button>
+    </div>
+  </div>
+
+  <!-- Metadata panel -->
+  <div class="meta-pane">
+    <div class="meta-section">
+      <div class="meta-section-title">Plugin Info</div>
+      <div class="meta-field">
+        <label class="meta-label" for="metaName">Name (slug)</label>
+        <input class="meta-input" id="metaName" type="text" placeholder="my-plugin" autocomplete="off" spellcheck="false">
+      </div>
+      <div class="meta-field">
+        <label class="meta-label" for="metaDisplayName">Display Name</label>
+        <input class="meta-input" id="metaDisplayName" type="text" placeholder="My Plugin" autocomplete="off">
+      </div>
+      <div class="meta-field">
+        <label class="meta-label" for="metaVersion">Version</label>
+        <input class="meta-input" id="metaVersion" type="text" placeholder="0.1.0" autocomplete="off" spellcheck="false">
+      </div>
+      <div class="meta-field">
+        <label class="meta-label" for="metaIcon">Icon (emoji)</label>
+        <input class="meta-input" id="metaIcon" type="text" placeholder="🔌" autocomplete="off" maxlength="4">
+      </div>
+    </div>
+    <div class="meta-section">
+      <div class="meta-section-title">Details</div>
+      <div class="meta-field">
+        <label class="meta-label" for="metaDescription">Description</label>
+        <textarea class="meta-input" id="metaDescription" placeholder="What does this plugin do?"></textarea>
+      </div>
+      <div class="meta-field">
+        <label class="meta-label" for="metaRepository">Repository URL</label>
+        <input class="meta-input" id="metaRepository" type="url" placeholder="https://github.com/..." autocomplete="off">
+      </div>
+      <div class="meta-field">
+        <label class="meta-label" for="metaWidgetType">Widget Type</label>
+        <select class="meta-input" id="metaWidgetType">
+          <option value="counter">counter</option>
+          <option value="chart">chart</option>
+          <option value="list">list</option>
+          <option value="custom">custom</option>
+        </select>
+      </div>
+    </div>
+    <div class="meta-section">
+      <div class="meta-section-title">Publish</div>
+      <button class="btn btn-publish" id="publishBtn" onclick="publishPlugin()">↑ Publish to Store</button>
+      <div class="publish-status" id="publishStatus"></div>
+    </div>
+  </div>
+
+  <!-- Output -->
+  <div class="output-pane">
+    <div class="pane-header">
+      <span class="pane-dot dot-out"></span>
+      Output
+      <span id="statusBadge" style="margin-left:auto"></span>
+    </div>
+    <div class="output-body" id="output">
+      <div class="out-idle">// Run your plugin to see output here.</div>
+    </div>
+    <div id="widget-output" style="display:none; flex:1; padding:16px; overflow:auto; border-top:1px solid var(--border);"></div>
+  </div>
+
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.17/codemirror.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.17/mode/javascript/javascript.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.17/addon/edit/closebrackets.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.17/addon/edit/matchbrackets.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.17/addon/comment/comment.min.js"></script>
+
+<script>
+const TEMPLATE = `// CodeTrackr Plugin — Sandbox Preview
+// Available globals: ctx, heartbeat (for on_heartbeat), log(), warn(), error()
+//
+// ctx = {
+//   user_id: "uuid",
+//   db: { query: async (sql, params) => [...rows] },
+//   redis: { get: async (key) => value, set: async (key, value) => void },
+//   config: { base_url: "https://..." }
+// }
+
+// ── Lifecycle hooks ───────────────────────────────────────────────────────────
+
+async function on_heartbeat(ctx, heartbeat) {
+  log("Heartbeat received!");
+  log("Project:", heartbeat.project);
+  log("Language:", heartbeat.language);
+  log("Duration:", heartbeat.duration, "seconds");
+}
+
+async function on_tick(ctx) {
+  log("Tick! Running background task...");
+}
+
+async function on_install(ctx) {
+  log("Plugin installed for user:", ctx.user_id);
+}
+
+// ── Custom HTTP endpoints (RPC) ───────────────────────────────────────────────
+// Declare handlers here to expose them as:
+//   POST /api/v1/plugins/<your-plugin-name>/rpc/<handler-name>
+// Each handler receives (ctx, req) and must return a JSON-serializable value.
+
+const endpoints = {
+
+  // Example: delete the authenticated user's account
+  "delete-account": async (ctx, req) => {
+    // Confirm the user passed a valid confirmation token
+    if (req.confirm !== "DELETE_MY_ACCOUNT") {
+      return { ok: false, error: "Missing confirmation" };
+    }
+    await ctx.db.query(
+      "DELETE FROM users WHERE id = $1",
+      [ctx.user_id]
+    );
+    return { ok: true, message: "Account deleted" };
+  },
+
+  // Example: reset weekly stats
+  "reset-stats": async (ctx, req) => {
+    await ctx.db.query(
+      "DELETE FROM heartbeats WHERE user_id = $1 AND created_at > NOW() - INTERVAL '7 days'",
+      [ctx.user_id]
+    );
+    await ctx.redis.del("stats:" + ctx.user_id);
+    return { ok: true };
+  },
+
+};
+`;
+
+const cm = CodeMirror.fromTextArea(document.getElementById('editor'), {
+  mode: 'javascript',
+  theme: 'dracula',
+  lineNumbers: true,
+  autoCloseBrackets: true,
+  matchBrackets: true,
+  indentUnit: 2,
+  tabSize: 2,
+  indentWithTabs: false,
+  extraKeys: {
+    'Ctrl-Enter': runCode,
+    'Cmd-Enter': runCode,
+    'Ctrl-/': (cm) => cm.execCommand('toggleComment'),
+    'Cmd-/': (cm) => cm.execCommand('toggleComment'),
+  }
+});
+// Resize CodeMirror to fill wrapper
+function resizeCM() {
+  const wrapper = document.querySelector('.editor-wrapper');
+  cm.setSize('100%', wrapper.clientHeight + 'px');
+}
+window.addEventListener('resize', resizeCM);
+setTimeout(resizeCM, 50);
+
+let currentTrigger = 'on_heartbeat';
+
+function selectTrigger(el) {
+  document.querySelectorAll('.trigger-btn').forEach(b => b.classList.remove('active'));
+  el.classList.add('active');
+  currentTrigger = el.dataset.trigger;
+  const handlerInput = document.getElementById('rpc-handler-input');
+  const bodyInput = document.getElementById('rpc-body-input');
+  const isRpc = currentTrigger === 'rpc';
+  const isWidget = currentTrigger === 'widget';
+  if (handlerInput) handlerInput.style.display = isRpc ? 'inline-block' : 'none';
+  if (bodyInput) bodyInput.style.display = isRpc ? 'inline-block' : 'none';
+  // Alternar entre output de texto (plugins) y output de widget (DOM)
+  document.getElementById('output').style.display = isWidget ? 'none' : '';
+  document.getElementById('widget-output').style.display = isWidget ? 'block' : 'none';
+}
+
+function loadTemplate() {
+  cm.setValue(TEMPLATE);
+  document.getElementById('output').innerHTML = '<div class="out-idle">// Run your plugin to see output here.</div>';
+  document.getElementById('statusBadge').innerHTML = '';
+}
+
+function clearEditor() {
+  cm.setValue('');
+  document.getElementById('output').innerHTML = '<div class="out-idle">// Run your plugin to see output here.</div>';
+  document.getElementById('statusBadge').innerHTML = '';
+}
+
+function clearOutput() {
+  document.getElementById('output').innerHTML = '<div class="out-idle">// Run your plugin to see output here.</div>';
+  document.getElementById('statusBadge').innerHTML = '';
+}
+
+function appendOutput(html) {
+  const out = document.getElementById('output');
+  out.innerHTML += html;
+  out.scrollTop = out.scrollHeight;
+}
+
+function setStatus(type, text) {
+  const badge = document.getElementById('statusBadge');
+  badge.innerHTML = `<span class="status-badge status-${type}">${text}</span>`;
+}
+
+function runWidgetScript(code) {
+  const widgetOut = document.getElementById('widget-output');
+  const t0 = performance.now();
+  widgetOut.innerHTML = '';
+  setStatus('run', '● running');
+
+  const container = document.createElement('div');
+  container.style.cssText = 'width:100%;';
+  widgetOut.appendChild(container);
+
+  const token = localStorage.getItem('ct_token') || '';
+
+  try {
+    const fn = new Function('container', 'token', code);
+    fn(container, token);
+    const elapsed = ((performance.now() - t0) / 1000).toFixed(2);
+    const meta = document.createElement('div');
+    meta.style.cssText = 'font-size:10px;color:var(--text-dark);font-family:var(--font-mono);margin-top:12px;padding-top:8px;border-top:1px solid var(--border);';
+    meta.textContent = `exit 0 · ${elapsed}s`;
+    widgetOut.appendChild(meta);
+    setStatus('ok', '✓ ok');
+  } catch (e) {
+    const err = document.createElement('div');
+    err.style.cssText = 'color:#e53;font-family:var(--font-mono);font-size:12px;white-space:pre-wrap;';
+    err.textContent = `✗ ${e.message}`;
+    widgetOut.appendChild(err);
+    setStatus('err', '✗ error');
+  }
+}
+
+async function runCode() {
+  const code = cm.getValue();
+  if (!code.trim()) return;
+
+  if (currentTrigger === 'widget') {
+    runWidgetScript(code);
+    return;
+  }
+
+  const runBtn = document.getElementById('runBtn');
+  runBtn.disabled = true;
+  runBtn.textContent = '⏳ Running…';
+
+  const rpcHandlerEl = document.getElementById('rpc-handler-input');
+  const rpcBodyEl = document.getElementById('rpc-body-input');
+  const rpcHandler = rpcHandlerEl?.value.trim() || 'endpoint';
+  const label = currentTrigger === 'rpc' ? `rpc:<strong>${escHtml(rpcHandler)}</strong>` : `<strong>${currentTrigger}</strong>`;
+  const out = document.getElementById('output');
+  out.innerHTML = `<div class="out-running">▶ Running ${label}…</div><hr class="out-separator"/>`;
+  setStatus('run', '● running');
+
+  const t0 = performance.now();
+
+  try {
+    const rpcBody = rpcBodyEl ? (() => { try { return JSON.parse(rpcBodyEl.value || 'null'); } catch { return null; } })() : undefined;
+    const token = localStorage.getItem('ct_token');
+    const resp = await fetch('/api/v1/cteditor/run', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        ...(token ? { 'Authorization': `Bearer ${token}` } : {}),
+      },
+      body: JSON.stringify({
+        code,
+        trigger: currentTrigger === 'rpc' ? `rpc:${rpcHandler}` : currentTrigger,
+        rpc_body: currentTrigger === 'rpc' ? rpcBody : undefined,
+      })
+    });
+
+    const data = await resp.json();
+    const elapsed = ((performance.now() - t0) / 1000).toFixed(2);
+
+    if (data.stdout) {
+      data.stdout.split('\n').filter(l => l !== '').forEach(line => {
+        if (line.startsWith('[UI] ')) {
+          appendOutput(`<div class="out-ui">${escHtml(line.slice(5))}</div>`);
+        } else {
+          const cls = line.startsWith('[WARN]') ? 'out-warn'
+                    : line.startsWith('[ERROR]') ? 'out-error'
+                    : 'out-line';
+          appendOutput(`<div class="${cls}">${escHtml(line)}</div>`);
+        }
+      });
+    }
+
+    if (data.stderr && data.stderr.trim()) {
+      appendOutput(`<hr class="out-separator"/>`);
+      data.stderr.split('\n').filter(l => l !== '').forEach(line => {
+        appendOutput(`<div class="out-error">${escHtml(line)}</div>`);
+      });
+    }
+
+    appendOutput(`<hr class="out-separator"/>`);
+
+    if (data.success) {
+      appendOutput(`<div class="out-success">✓ Completed successfully</div>`);
+      appendOutput(`<div class="out-meta">exit 0 · ${elapsed}s</div>`);
+      setStatus('ok', '✓ ok');
+    } else {
+      const errMsg = (data.stderr && data.stderr.trim()) ? '' : '✗ Plugin exited with error';
+      if (errMsg) appendOutput(`<div class="out-error">${escHtml(errMsg)}</div>`);
+      appendOutput(`<div class="out-meta">exit 1 · ${elapsed}s</div>`);
+      setStatus('err', '✗ error');
+    }
+
+  } catch (e) {
+    appendOutput(`<div class="out-error">✗ Request failed: ${escHtml(e.message)}</div>`);
+    setStatus('err', '✗ error');
+  }
+
+  runBtn.disabled = false;
+  runBtn.textContent = '▶ Run';
+}
+
+// ── Metadata helpers ────────────────────────────────────────────────────────
+
+function getMeta() {
+  return {
+    name:         document.getElementById('metaName').value.trim(),
+    display_name: document.getElementById('metaDisplayName').value.trim(),
+    version:      document.getElementById('metaVersion').value.trim() || '0.1.0',
+    icon:         document.getElementById('metaIcon').value.trim() || '🔌',
+    description:  document.getElementById('metaDescription').value.trim() || null,
+    repository:   document.getElementById('metaRepository').value.trim() || null,
+    widget_type:  document.getElementById('metaWidgetType').value,
+  };
+}
+
+function setMeta(meta) {
+  if (!meta) return;
+  document.getElementById('metaName').value        = meta.name         || '';
+  document.getElementById('metaDisplayName').value = meta.display_name || '';
+  document.getElementById('metaVersion').value     = meta.version      || '';
+  document.getElementById('metaIcon').value        = meta.icon         || '';
+  document.getElementById('metaDescription').value = meta.description  || '';
+  document.getElementById('metaRepository').value  = meta.repository   || '';
+  if (meta.widget_type) {
+    document.getElementById('metaWidgetType').value = meta.widget_type;
+  }
+}
+
+// ── Export — .ctplugin (JSON: { meta, code }) ────────────────────────────────
+
+function exportPlugin() {
+  const code = cm.getValue();
+  if (!code.trim()) return;
+  const meta = getMeta();
+  const slug = meta.name || 'plugin';
+  const payload = JSON.stringify({ meta, code }, null, 2);
+  const blob = new Blob([payload], { type: 'application/json' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = slug + '.ctplugin';
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
+// ── Import — acepta .js (solo código) o .ctplugin (JSON con meta + código) ──
+
+function importPlugin() {
+  document.getElementById('importInput').value = '';
+  document.getElementById('importInput').click();
+}
+
+function handleImport(event) {
+  const file = event.target.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = (e) => {
+    const text = e.target.result;
+    if (file.name.endsWith('.ctplugin')) {
+      try {
+        const parsed = JSON.parse(text);
+        cm.setValue(parsed.code || '');
+        setMeta(parsed.meta || {});
+      } catch {
+        cm.setValue(text);
+      }
+    } else {
+      cm.setValue(text);
+    }
+    document.getElementById('output').innerHTML = '<div class="out-idle">// Run your plugin to see output here.</div>';
+    document.getElementById('statusBadge').innerHTML = '';
+  };
+  reader.readAsText(file);
+}
+
+// ── Publish ──────────────────────────────────────────────────────────────────
+
+async function publishPlugin() {
+  const token = localStorage.getItem('ct_token');
+  if (!token) {
+    setPublishStatus('err', '✗ Not logged in. Please sign in first.');
+    return;
+  }
+  const meta = getMeta();
+  if (!meta.name) {
+    setPublishStatus('err', '✗ Name (slug) is required.');
+    return;
+  }
+  if (!meta.display_name) {
+    setPublishStatus('err', '✗ Display Name is required.');
+    return;
+  }
+  const code = cm.getValue();
+  if (!code.trim()) {
+    setPublishStatus('err', '✗ Plugin code is empty.');
+    return;
+  }
+
+  const btn = document.getElementById('publishBtn');
+  btn.disabled = true;
+  btn.textContent = '⏳ Publishing…';
+  setPublishStatus('', '');
+
+  try {
+    const resp = await fetch('/api/v1/store/publish', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${token}`,
+      },
+      body: JSON.stringify({ ...meta, script: code }),
+    });
+    const data = await resp.json();
+    if (resp.ok) {
+      setPublishStatus('ok', '✓ Published successfully!');
+    } else {
+      setPublishStatus('err', '✗ ' + (data.error || 'Publish failed'));
+    }
+  } catch (e) {
+    setPublishStatus('err', '✗ ' + e.message);
+  }
+
+  btn.disabled = false;
+  btn.textContent = '↑ Publish to Store';
+}
+
+function setPublishStatus(type, msg) {
+  const el = document.getElementById('publishStatus');
+  el.className = 'publish-status' + (type ? ' publish-' + type : '');
+  el.textContent = msg;
+}
+
+// ── Load current user ────────────────────────────────────────────────────────
+
+async function loadUser() {
+  const token = localStorage.getItem('ct_token');
+  if (!token) return;
+  try {
+    const resp = await fetch('/api/v1/user/me', {
+      headers: { 'Authorization': `Bearer ${token}` },
+    });
+    if (!resp.ok) return;
+    const data = await resp.json();
+    const user = data.user || data;
+    if (user && user.username) {
+      const pill = document.getElementById('topbarUser');
+      const avatar = document.getElementById('topbarAvatar');
+      const username = document.getElementById('topbarUsername');
+      if (user.avatar_url) {
+        avatar.src = user.avatar_url;
+        avatar.style.display = '';
+      } else {
+        avatar.style.display = 'none';
+      }
+      username.textContent = user.username;
+      pill.style.display = 'flex';
+    }
+  } catch { /* silently ignore */ }
+}
+
+loadUser();
+
+function escHtml(str) {
+  return str.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+</script>
+</body>
+</html>

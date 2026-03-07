@@ -1,0 +1,1557 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Documentation | CodeTrackr</title>
+    <meta name="description" content="Minimal tracking infrastructure for developers." />
+    <link rel="icon" type="image/png" href="/static/images/logo.png" />
+  <link rel="stylesheet" href="/static/css/main.css" />
+    <style>
+        .nav {
+            position: sticky;
+            top: 0;
+            z-index: 100;
+            background: var(--bg);
+            border-bottom: 1px solid var(--border);
+        }
+
+        .docs-layout {
+            display: flex;
+            gap: 48px;
+            margin: 60px auto;
+            align-items: flex-start;
+        }
+
+        .docs-sidebar {
+            width: 220px;
+            flex-shrink: 0;
+            position: sticky;
+            top: 40px;
+        }
+
+        .docs-content {
+            flex: 1;
+            max-width: 700px;
+            padding-bottom: 100px;
+        }
+
+        .sidebar-group {
+            margin-bottom: 32px;
+        }
+
+        .sidebar-group h3 {
+            font-size: 11px;
+            text-transform: uppercase;
+            color: var(--text-dark);
+            margin-bottom: 12px;
+            letter-spacing: 0.1em;
+            font-family: var(--font-mono);
+        }
+
+        .sidebar-list {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }
+
+        .sidebar-list a {
+            font-size: 13px;
+            color: var(--text-muted);
+            padding-left: 8px;
+            border-left: 1px solid var(--border);
+            transition: all var(--transition);
+        }
+
+        .sidebar-list a:hover,
+        .sidebar-list a.active {
+            color: var(--text-main);
+            border-left-color: var(--text-main);
+        }
+
+        .docs-content h1 {
+            font-size: 32px;
+            margin-bottom: 8px;
+            color: var(--text-main);
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            font-family: var(--font-mono);
+        }
+
+        .docs-content > p:first-of-type {
+            font-size: 14px;
+            color: var(--text-dark);
+            margin-bottom: 48px;
+        }
+
+        .docs-content h2 {
+            font-size: 20px;
+            font-weight: 500;
+            margin: 48px 0 16px;
+            border-bottom: 1px solid var(--border);
+            padding-bottom: 8px;
+            font-family: var(--font-mono);
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            font-size: 14px;
+        }
+
+        .docs-content h3 {
+            font-size: 13px;
+            margin: 24px 0 12px;
+            color: var(--text-main);
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            font-family: var(--font-mono);
+        }
+
+        .docs-content p,
+        .docs-content li {
+            margin-bottom: 16px;
+            font-size: 13px;
+            line-height: 1.7;
+            color: var(--text-muted);
+        }
+
+        .docs-content ul {
+            padding-left: 20px;
+            list-style-type: square;
+            margin-bottom: 24px;
+        }
+
+        .ide-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(130px, 1fr));
+            gap: 12px;
+            margin: 24px 0;
+        }
+
+        .ide-card {
+            padding: 8px;
+            font-size: 12px;
+            font-family: var(--font-mono);
+            border: 1px solid var(--border);
+            border-radius: var(--radius-sm);
+            text-align: center;
+            color: var(--text-muted);
+            transition: all var(--transition);
+            cursor: default;
+            background: var(--bg);
+        }
+
+        .ide-card:hover {
+            border-color: var(--border-focus);
+            color: var(--text-main);
+            background: var(--bg-card);
+        }
+
+        pre {
+            margin-bottom: 24px;
+        }
+
+        .docs-content section {
+            scroll-margin-top: 24px;
+        }
+
+        .docs-footer {
+            margin-top: 60px;
+            border-top: 1px solid var(--border);
+            padding-top: 24px;
+            font-size: 11px;
+            color: var(--text-dark);
+            font-family: var(--font-mono);
+        }
+
+        /* UI Framework — preview container */
+        .ui-preview {
+            border: 1px solid var(--border);
+            border-radius: var(--radius);
+            padding: 24px;
+            margin-bottom: 16px;
+            background: var(--bg-card);
+        }
+
+        /* UI Framework — design tokens table */
+        .token-grid {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+            margin: 16px 0 24px;
+        }
+
+        .token-row {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            font-size: 12px;
+            font-family: var(--font-mono);
+        }
+
+        .token-swatch {
+            width: 20px;
+            height: 20px;
+            border-radius: var(--radius-sm);
+            flex-shrink: 0;
+        }
+
+        .token-val {
+            color: var(--text-dark);
+            margin-left: auto;
+        }
+    </style>
+</head>
+
+<body>
+
+    <!-- NAV -->
+    <nav class="nav" id="nav">
+        <div class="container nav-inner">
+            <a href="/" class="nav-logo">CodeTrackr</a>
+            <ul class="nav-links">
+                <li><a href="/#stats" class="nav-link">Stats</a></li>
+                <li><a href="/#leaderboard" class="nav-link">Leaderboard</a></li>
+                <li><a href="/docs" class="nav-link" style="color:var(--text-main);">Docs</a></li>
+                <li><a href="/auth/github" class="nav-link">Login</a></li>
+            </ul>
+        </div>
+    </nav>
+
+    <!-- DOCS LAYOUT -->
+    <div class="container docs-layout">
+        <aside class="docs-sidebar">
+            <div class="sidebar-group">
+                <h3>Plugins</h3>
+                <div class="sidebar-list">
+                    <a href="#plugin-editor" class="sidebar-link">Plugin Editor</a>
+                    <a href="#widget-plugins" class="sidebar-link">Widget Plugins</a>
+                    <a href="#lifecycle-plugins" class="sidebar-link">Lifecycle Plugins</a>
+                    <a href="#plugin-store" class="sidebar-link">Plugin Store</a>
+                    <a href="#submitting-a-package" class="sidebar-link">Publishing</a>
+                </div>
+            </div>
+            <div class="sidebar-group">
+                <h3>API</h3>
+                <div class="sidebar-list">
+                    <a href="#import" class="sidebar-link">Import Data</a>
+                    <a href="#creating-extensions" class="sidebar-link">IDE Integration</a>
+                </div>
+            </div>
+            <div class="sidebar-group">
+                <h3>UI Framework</h3>
+                <div class="sidebar-list">
+                    <a href="#ui-tokens" class="sidebar-link">Design Tokens</a>
+                    <a href="#ui-cards" class="sidebar-link">Cards</a>
+                    <a href="#ui-stat" class="sidebar-link">Stat Widget</a>
+                    <a href="#ui-buttons" class="sidebar-link">Buttons</a>
+                    <a href="#ui-badges" class="sidebar-link">Badges</a>
+                    <a href="#ui-table" class="sidebar-link">Tables</a>
+                    <a href="#ui-bars" class="sidebar-link">Bar Charts</a>
+                    <a href="#ui-progress" class="sidebar-link">Progress Bars</a>
+                    <a href="#ui-code" class="sidebar-link">Code Blocks</a>
+                    <a href="#ui-empty" class="sidebar-link">Empty States</a>
+                    <a href="#ui-forms" class="sidebar-link">Forms &amp; Inputs</a>
+                </div>
+            </div>
+        </aside>
+
+        <main class="docs-content">
+            <h1>Documentation</h1>
+            <p>Minimal tracking infrastructure for developers. Direct integration without complex OAuth required.</p>
+
+            <!-- ══════════════════════════════════════════════════════════ -->
+            <!-- PLUGIN EDITOR                                             -->
+            <!-- ══════════════════════════════════════════════════════════ -->
+
+            <section id="plugin-editor">
+                <h2>Plugin Editor</h2>
+                <p>The Plugin Editor (<a href="/cteditor">/cteditor</a>) is a browser-based IDE where you can write, test, and preview your plugins before publishing them to the store. It supports both <strong>widget plugins</strong> (rendered in the browser) and <strong>lifecycle plugins</strong> (executed server-side in QuickJS).</p>
+
+                <h3>Opening the editor</h3>
+                <p>Log in and click <strong>Plugin Editor</strong> in your dashboard navigation. The editor opens with a template already loaded — click <strong>Template</strong> at any time to reload it.</p>
+
+                <h3>Interface overview</h3>
+                <div class="table-wrapper">
+                    <table>
+                        <thead><tr><th>Element</th><th>Description</th></tr></thead>
+                        <tbody>
+                            <tr><td class="td-main">Editor pane (left)</td><td>Monaco-style JavaScript editor with syntax highlighting, bracket matching, and keyboard shortcuts.</td></tr>
+                            <tr><td class="td-main">Output pane (right)</td><td>Shows console output, errors, and exit status for lifecycle plugins — or the rendered DOM for widget plugins.</td></tr>
+                            <tr><td class="td-main"><code>Template</code> button</td><td>Loads the default plugin template and clears the output.</td></tr>
+                            <tr><td class="td-main"><code>Clear</code> button</td><td>Empties the editor and the output pane.</td></tr>
+                            <tr><td class="td-main"><code>▶ Run</code> button</td><td>Executes the current code using the selected simulate mode. Shortcut: <code>Cmd+Enter</code> / <code>Ctrl+Enter</code>.</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+
+                <h3>Simulate modes</h3>
+                <p>Select the trigger to simulate using the buttons in the bottom bar of the editor pane:</p>
+                <div class="table-wrapper">
+                    <table>
+                        <thead><tr><th>Mode</th><th>What it does</th></tr></thead>
+                        <tbody>
+                            <tr><td class="td-main"><code>on_heartbeat</code></td><td>Calls your <code>on_heartbeat(ctx, heartbeat)</code> function with a mock heartbeat object. Runs in the QuickJS sandbox on the server.</td></tr>
+                            <tr><td class="td-main"><code>on_tick</code></td><td>Calls your <code>on_tick(ctx)</code> function. Use for scheduled background tasks.</td></tr>
+                            <tr><td class="td-main"><code>on_install</code></td><td>Calls your <code>on_install(ctx)</code> function. Simulates a fresh install.</td></tr>
+                            <tr><td class="td-main"><code>widget</code></td><td>Executes your script in the <em>browser</em> with a live <code>container</code> DOM element and your real <code>token</code>. The output pane renders the widget HTML directly.</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+
+                <h3>Widget mode — live preview</h3>
+                <p>Switch to <strong>widget</strong> mode when writing dashboard panel scripts. Your code receives a real <code>container</code> div and your authenticated <code>token</code>, so API calls work exactly as they will in production. The output pane renders the widget live — you can interact with buttons, file inputs, and any DOM elements your script creates.</p>
+                <pre><code class="language-javascript">// Example: renders a live counter widget in the editor output
+container.innerHTML = '&lt;div style="font-size:28px; font-family:var(--font-mono);"&gt;Loading…&lt;/div&gt;';
+
+fetch('/api/v1/stats/summary?range=7d', {
+  headers: { 'Authorization': 'Bearer ' + token }
+})
+.then(r =&gt; r.json())
+.then(data =&gt; {
+  const s = data.total_seconds || 0;
+  const h = Math.floor(s / 3600);
+  const m = Math.floor((s % 3600) / 60);
+  container.querySelector('div').textContent = h + 'h ' + m + 'm';
+});</code></pre>
+
+                <h3>Lifecycle mode — QuickJS sandbox</h3>
+                <p>When using <code>on_heartbeat</code>, <code>on_tick</code>, or <code>on_install</code> modes, the code is sent to the server and executed inside an isolated <strong>QuickJS</strong> runtime with no access to the filesystem, network, or OS. Available globals are <code>ctx</code>, <code>heartbeat</code>, <code>log()</code>, <code>warn()</code>, and <code>error()</code>. Any call to <code>log()</code> appears in the Output pane.</p>
+                <pre><code class="language-javascript">async function on_heartbeat(ctx, heartbeat) {
+  log('Project:', heartbeat.project);
+  log('Language:', heartbeat.language);
+
+  // Real DB query — runs server-side
+  const rows = await ctx.db.query(
+    'SELECT COUNT(*) as n FROM heartbeats WHERE user_id = $1',
+    [ctx.user_id]
+  );
+  log('Total heartbeats:', rows[0].n);
+}</code></pre>
+
+                <h3>Keyboard shortcuts</h3>
+                <div class="table-wrapper">
+                    <table>
+                        <thead><tr><th>Shortcut</th><th>Action</th></tr></thead>
+                        <tbody>
+                            <tr><td class="td-main"><code>Cmd/Ctrl + Enter</code></td><td>Run code</td></tr>
+                            <tr><td class="td-main"><code>Cmd/Ctrl + /</code></td><td>Toggle comment</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+            </section>
+
+            <!-- ══════════════════════════════════════════════════════════ -->
+            <!-- WIDGET PLUGINS                                            -->
+            <!-- ══════════════════════════════════════════════════════════ -->
+
+            <section id="widget-plugins">
+                <h2>Widget Plugins</h2>
+                <p>Widget plugins add custom panels to a user's dashboard. They are plain JavaScript scripts executed
+                    directly in the user's browser. You have full DOM access, <code>fetch</code>, and any standard
+                    browser API. No server recompilation, no external hosting required.</p>
+
+                <h3>How it works</h3>
+                <p>When a user visits their dashboard, CodeTrackr fetches all their installed plugins and runs each
+                    plugin's script in the browser. Your script receives two arguments:</p>
+                <ul>
+                    <li><strong><code>container</code></strong> — a <code>div</code> DOM element where your plugin
+                        should render its content.</li>
+                    <li><strong><code>token</code></strong> — the user's Bearer token, so you can call the CodeTrackr
+                        API authenticated.</li>
+                </ul>
+                <p>Your script must populate <code>container</code> with whatever HTML or text you want to display. The
+                    script body is executed directly — you do not need to define a function named
+                    <code>render</code>; just write the logic at the top level.</p>
+
+                <h3>Step 1 — Write your script</h3>
+                <p>The simplest possible plugin displays a static counter:</p>
+                <pre><code class="language-javascript">container.textContent = 'Hello from my plugin!';</code></pre>
+
+                <p>A real plugin calls the CodeTrackr API using the provided token. Here is an example that shows the
+                    user's total coding time this week:</p>
+                <pre><code class="language-javascript">container.textContent = 'Loading…';
+
+fetch('/api/v1/stats/summary?range=7d', {
+  headers: { 'Authorization': 'Bearer ' + token }
+})
+.then(function(r) { return r.json(); })
+.then(function(data) {
+  var s = data.total_seconds || 0;
+  var h = Math.floor(s / 3600);
+  var m = Math.floor((s % 3600) / 60);
+  container.textContent = h + 'h ' + m + 'm this week';
+})
+.catch(function() {
+  container.textContent = '—';
+});</code></pre>
+
+                <h3>Step 2 — Build the panel HTML (optional)</h3>
+                <p>You can set <code>innerHTML</code> to render richer UI using the design tokens from
+                    <code>main.css</code>. The container already lives inside a <code>.plugin-panel</code> card.</p>
+                <pre><code class="language-javascript">fetch('/api/v1/stats/languages?range=7d', {
+  headers: { 'Authorization': 'Bearer ' + token }
+})
+.then(function(r) { return r.json(); })
+.then(function(data) {
+  var langs = (data.languages || []).slice(0, 3);
+  var rows = langs.map(function(l) {
+    return '&lt;div style="display:flex;justify-content:space-between;font-size:12px;margin-bottom:6px;"&gt;'
+      + '&lt;span style="color:var(--text-main);"&gt;' + l.language + '&lt;/span&gt;'
+      + '&lt;span style="color:var(--text-dark);"&gt;' + l.percentage.toFixed(1) + '%&lt;/span&gt;'
+      + '&lt;/div&gt;';
+  }).join('');
+  container.innerHTML = rows || '&lt;span style="color:var(--text-muted);"&gt;No data yet&lt;/span&gt;';
+});</code></pre>
+
+                <h3>Step 3 — Available API endpoints</h3>
+                <p>Your script can call any authenticated CodeTrackr endpoint using the <code>token</code> argument.
+                    The most useful ones for plugins are:</p>
+                <div class="table-wrapper">
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>Endpoint</th>
+                                <th>Description</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr>
+                                <td class="td-main"><code>GET /api/v1/stats/summary?range=7d</code></td>
+                                <td>Total time, top language, top project for a period (<code>7d</code>, <code>30d</code>, <code>all</code>)</td>
+                            </tr>
+                            <tr>
+                                <td class="td-main"><code>GET /api/v1/stats/languages?range=7d</code></td>
+                                <td>Language breakdown with percentages</td>
+                            </tr>
+                            <tr>
+                                <td class="td-main"><code>GET /api/v1/stats/daily?range=7d</code></td>
+                                <td>Per-day seconds array for chart rendering</td>
+                            </tr>
+                            <tr>
+                                <td class="td-main"><code>GET /api/v1/stats/projects</code></td>
+                                <td>Time per project with last heartbeat</td>
+                            </tr>
+                            <tr>
+                                <td class="td-main"><code>GET /api/v1/stats/streaks</code></td>
+                                <td>Current and longest coding streaks</td>
+                            </tr>
+                            <tr>
+                                <td class="td-main"><code>GET /api/v1/user/me</code></td>
+                                <td>Authenticated user profile</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+                <p>All requests require the header <code>Authorization: Bearer &lt;token&gt;</code>, which is provided
+                    automatically via the <code>token</code> argument.</p>
+
+                <h3>Step 4 — Handle errors gracefully</h3>
+                <p>Always handle fetch errors and empty states so the panel does not break the dashboard:</p>
+                <pre><code class="language-javascript">fetch('/api/v1/stats/streaks', {
+  headers: { 'Authorization': 'Bearer ' + token }
+})
+.then(function(r) {
+  if (!r.ok) throw new Error('API error');
+  return r.json();
+})
+.then(function(data) {
+  container.textContent = (data.current_streak || 0) + ' day streak 🔥';
+})
+.catch(function() {
+  container.innerHTML = '&lt;span style="color:var(--text-muted);"&gt;—&lt;/span&gt;';
+});</code></pre>
+
+                <h3>Step 5 — Test in the editor first</h3>
+                <p>Open the <a href="/cteditor">Plugin Editor</a>, paste your script, select <strong>widget</strong> mode in the simulate bar, and click <strong>▶ Run</strong>. The output pane renders your widget live with your real token — full interactive preview before publishing.</p>
+
+                <h3>Step 6 — Publish your plugin</h3>
+                <p>Once your script is ready, publish it through the dashboard UI or via the API:</p>
+                <ul>
+                    <li>Log in and click <strong>+ Publish Plugin</strong> in your dashboard.</li>
+                    <li>Fill in the name (kebab-case, e.g. <code>streak-counter</code>), display name, description,
+                        version, icon emoji, and widget type.</li>
+                    <li>Paste your JavaScript code in the <strong>Plugin Script</strong> field.</li>
+                    <li>Click <strong>Publish</strong>.</li>
+                </ul>
+                <p>Or publish directly via the API:</p>
+                <pre><code class="language-bash">curl -X POST https://codetrackr.dev/api/v1/store/publish \
+  -H "Authorization: Bearer YOUR_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "name": "streak-counter",
+    "display_name": "Streak Counter",
+    "description": "Shows your current coding streak.",
+    "version": "1.0.0",
+    "icon": "🔥",
+    "widget_type": "counter",
+    "script": "fetch(\"/api/v1/stats/streaks\",{headers:{\"Authorization\":\"Bearer \"+token}}).then(r=>r.json()).then(d=>{container.textContent=(d.current_streak||0)+\" day streak\";}).catch(()=>{container.textContent=\"—\";});"
+  }'</code></pre>
+
+                <h3>Step 7 — Install and test</h3>
+                <p>After publishing, find your plugin in the <strong>Plugin Store</strong> section of the home page and
+                    click <strong>Install</strong>. Go to your dashboard — the panel will appear automatically. If the
+                    script has a runtime error, a warning <code>⚠ Plugin error</code> will be shown and the full error
+                    will be logged to the browser console.</p>
+
+                <h3>Security constraints</h3>
+                <ul>
+                    <li>Scripts run inside <code>new Function()</code> — they have access to standard browser APIs
+                        but cannot access variables from the CodeTrackr application scope.</li>
+                    <li>Plugins that are reported and banned by admins will stop loading for all users.</li>
+                    <li>Never hardcode secrets in your script — the <code>token</code> argument is always the
+                        authenticated user's own token.</li>
+                    <li>External fetch calls from the script are allowed (runs in the user's browser), but consider
+                        that users may have privacy extensions that block cross-origin requests.</li>
+                </ul>
+
+                <h3>Full example — Daily Activity Bars</h3>
+                <p>A complete plugin that renders a 7-day bar chart inside the panel:</p>
+                <pre><code class="language-javascript">var bar_style = 'flex:1;background:var(--border-focus);border-radius:2px 2px 0 0;min-height:2px;';
+
+container.innerHTML = '&lt;div id="ct-bars" style="display:flex;align-items:flex-end;gap:4px;height:60px;"&gt;&lt;/div&gt;';
+
+fetch('/api/v1/stats/daily?range=7d', {
+  headers: { 'Authorization': 'Bearer ' + token }
+})
+.then(function(r) { return r.json(); })
+.then(function(data) {
+  var daily = data.daily || [];
+  if (daily.length === 0) {
+    container.textContent = 'No data yet';
+    return;
+  }
+  var max = Math.max.apply(null, daily.map(function(d) { return d.seconds; })) || 1;
+  var barsEl = document.getElementById('ct-bars');
+  if (!barsEl) return;
+  barsEl.innerHTML = daily.map(function(d) {
+    var pct = Math.max((d.seconds / max) * 100, 2).toFixed(1);
+    var h = Math.floor(d.seconds / 3600);
+    var m = Math.floor((d.seconds % 3600) / 60);
+    return '&lt;div title="' + d.date + ' · ' + h + 'h ' + m + 'm" style="' + bar_style + 'height:' + pct + '%;"&gt;&lt;/div&gt;';
+  }).join('');
+})
+.catch(function() {
+  container.textContent = '—';
+});</code></pre>
+            </section>
+
+            <!-- ══════════════════════════════════════════════════════════ -->
+            <!-- LIFECYCLE PLUGINS                                         -->
+            <!-- ══════════════════════════════════════════════════════════ -->
+
+            <section id="lifecycle-plugins">
+                <h2>Lifecycle Plugins</h2>
+                <p>Lifecycle plugins run <strong>server-side</strong> inside an embedded <strong>QuickJS</strong> sandbox. They react to events like incoming heartbeats, periodic ticks, or a fresh install, and can expose custom HTTP endpoints. Unlike widget plugins, they have no DOM or browser access — instead they receive a <code>ctx</code> object with real database and Redis access scoped to the authenticated user.</p>
+
+                <h3>When to use lifecycle plugins</h3>
+                <ul>
+                    <li>Aggregate or transform user data every time a heartbeat arrives.</li>
+                    <li>Run scheduled background logic on a periodic tick.</li>
+                    <li>Set up initial state the moment a user installs your plugin.</li>
+                    <li>Expose custom POST endpoints callable from widget plugins or external tools.</li>
+                    <li>Let users trigger account-level actions (delete data, export stats, etc.) via RPC.</li>
+                </ul>
+
+                <h3>The ctx object</h3>
+                <p>Every handler receives <code>ctx</code> as its first argument. All properties are scoped to the authenticated user — you can never read or modify data belonging to other users.</p>
+                <div class="table-wrapper">
+                    <table>
+                        <thead><tr><th>Property</th><th>Type</th><th>Description</th></tr></thead>
+                        <tbody>
+                            <tr><td class="td-main"><code>ctx.user_id</code></td><td><code>string</code></td><td>UUID of the authenticated user who owns this plugin instance.</td></tr>
+                            <tr><td class="td-main"><code>ctx.db.query(sql, params)</code></td><td><code>Promise&lt;Row[]&gt;</code></td><td>Execute a parameterized PostgreSQL query. Returns an array of row objects. SQL must target allowed tables only (see below).</td></tr>
+                            <tr><td class="td-main"><code>ctx.redis.get(key)</code></td><td><code>Promise&lt;string|null&gt;</code></td><td>Get a value from your plugin's private Redis namespace.</td></tr>
+                            <tr><td class="td-main"><code>ctx.redis.set(key, value)</code></td><td><code>Promise&lt;void&gt;</code></td><td>Set a key in your plugin's private Redis namespace.</td></tr>
+                            <tr><td class="td-main"><code>ctx.redis.del(key)</code></td><td><code>Promise&lt;void&gt;</code></td><td>Delete a key from your plugin's private Redis namespace.</td></tr>
+                            <tr><td class="td-main"><code>ctx.redis.incr(key)</code></td><td><code>Promise&lt;number&gt;</code></td><td>Atomically increment an integer counter in your private namespace.</td></tr>
+                            <tr><td class="td-main"><code>ctx.config.base_url</code></td><td><code>string</code></td><td>Base URL of the CodeTrackr instance, e.g. <code>https://codetrackr.leapcell.app</code>.</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+
+                <h3>Lifecycle hooks</h3>
+                <p>Export any combination of these three functions. You do not need to export all of them — only the ones your plugin uses.</p>
+                <pre><code class="language-javascript">// Called every time a heartbeat is received for this user.
+async function on_heartbeat(ctx, heartbeat) {
+  log('Heartbeat from', heartbeat.editor, 'on', heartbeat.project);
+}
+
+// Called on a periodic server-side tick (approximately every minute).
+async function on_tick(ctx) {
+  log('Tick for user', ctx.user_id);
+}
+
+// Called exactly once when a user installs your plugin.
+async function on_install(ctx) {
+  log('Plugin installed for', ctx.user_id);
+}</code></pre>
+
+                <h3>The heartbeat object</h3>
+                <p><code>on_heartbeat</code> receives the raw heartbeat that was just recorded:</p>
+                <div class="table-wrapper">
+                    <table>
+                        <thead><tr><th>Field</th><th>Type</th><th>Description</th></tr></thead>
+                        <tbody>
+                            <tr><td class="td-main"><code>project</code></td><td><code>string</code></td><td>Project or workspace name</td></tr>
+                            <tr><td class="td-main"><code>language</code></td><td><code>string</code></td><td>Programming language detected</td></tr>
+                            <tr><td class="td-main"><code>file</code></td><td><code>string</code></td><td>Relative file path (may be empty)</td></tr>
+                            <tr><td class="td-main"><code>editor</code></td><td><code>string</code></td><td>Editor name, e.g. <code>VS Code</code>, <code>Neovim</code></td></tr>
+                            <tr><td class="td-main"><code>branch</code></td><td><code>string</code></td><td>Git branch (may be empty)</td></tr>
+                            <tr><td class="td-main"><code>os</code></td><td><code>string</code></td><td>Operating system</td></tr>
+                            <tr><td class="td-main"><code>machine</code></td><td><code>string</code></td><td>Machine identifier (may be empty)</td></tr>
+                            <tr><td class="td-main"><code>duration</code></td><td><code>number</code></td><td>Duration in seconds</td></tr>
+                            <tr><td class="td-main"><code>time</code></td><td><code>number</code></td><td>Unix timestamp of the activity</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+
+                <h3>Logging</h3>
+                <p>Use <code>log()</code>, <code>warn()</code>, and <code>error()</code> to emit output. In the Plugin Editor they appear in the Output pane in real time. In production they are written to the server trace log — not visible to end users.</p>
+                <pre><code class="language-javascript">log('Hello', 'world');           // Hello world
+warn('Something unusual');       // [WARN] Something unusual
+error('Something broke');        // [ERROR] Something broke
+
+// All functions accept multiple arguments — they are joined with spaces:
+log('Project:', heartbeat.project, '— duration:', heartbeat.duration + 's');</code></pre>
+
+                <h3>Database queries</h3>
+                <p>Use <code>ctx.db.query(sql, params)</code> with positional placeholders (<code>$1</code>, <code>$2</code>, …). Parameters are always passed as an array. The query runs synchronously inside the sandbox and returns an array of plain row objects.</p>
+                <p><strong>Always filter by <code>ctx.user_id</code></strong> — the sandbox does not add a user filter automatically. Queries that omit a user scope will read data from all users.</p>
+                <pre><code class="language-javascript">async function on_heartbeat(ctx, heartbeat) {
+  // Count total heartbeats for this user on this project
+  const rows = await ctx.db.query(
+    `SELECT COUNT(*) as n, SUM(duration_seconds) as total_secs
+     FROM heartbeats
+     WHERE user_id = $1 AND project = $2`,
+    [ctx.user_id, heartbeat.project]
+  );
+  log('Sessions on', heartbeat.project + ':', rows[0].n, '— total', rows[0].total_secs + 's');
+}</code></pre>
+
+                <h3>Allowed database tables</h3>
+                <p>For security, plugins can only query the following tables. Attempts to access any other table are rejected with an error before the query reaches the database:</p>
+                <div class="table-wrapper">
+                    <table>
+                        <thead><tr><th>Table</th><th>Description</th></tr></thead>
+                        <tbody>
+                            <tr><td class="td-main"><code>heartbeats</code></td><td>Raw coding activity events</td></tr>
+                            <tr><td class="td-main"><code>projects</code></td><td>Project metadata</td></tr>
+                            <tr><td class="td-main"><code>daily_stats_cache</code></td><td>Pre-computed daily totals</td></tr>
+                            <tr><td class="td-main"><code>plugin_store</code></td><td>Plugin registry entries</td></tr>
+                            <tr><td class="td-main"><code>installed_plugins</code></td><td>Which plugins a user has installed</td></tr>
+                            <tr><td class="td-main"><code>plugin_settings</code></td><td>Per-user plugin configuration (JSONB)</td></tr>
+                            <tr><td class="td-main"><code>plugin_reviews</code></td><td>User-written reviews for plugins</td></tr>
+                            <tr><td class="td-main"><code>users</code></td><td>User profile and preferences (read/update own record only)</td></tr>
+                            <tr><td class="td-main"><code>api_keys</code></td><td>User API keys (manage own keys only)</td></tr>
+                            <tr><td class="td-main"><code>user_follows</code></td><td>Follow relationships between users</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+                <p>Allowed SQL commands are <code>SELECT</code>, <code>INSERT</code>, <code>UPDATE</code>, and <code>DELETE</code>. DDL commands (<code>DROP</code>, <code>CREATE</code>, <code>ALTER</code>, <code>TRUNCATE</code>, etc.) are always rejected.</p>
+
+                <h3>Redis — private namespace</h3>
+                <p>All Redis keys are automatically namespaced to your plugin and user. The key you pass to <code>ctx.redis.*</code> is prefixed with <code>plugin:&lt;plugin-name&gt;:&lt;user-id&gt;:</code> before any operation — you cannot read or overwrite keys belonging to another plugin or another user.</p>
+                <pre><code class="language-javascript">async function on_heartbeat(ctx, heartbeat) {
+  // Stored as: plugin:my-plugin:&lt;user-id&gt;:count:&lt;project&gt;
+  const count = await ctx.redis.incr('count:' + heartbeat.project);
+  log('Heartbeat #' + count + ' on', heartbeat.project);
+
+  // Cache last seen language
+  await ctx.redis.set('last-lang', heartbeat.language);
+}
+
+async function on_tick(ctx) {
+  const lang = await ctx.redis.get('last-lang');
+  log('Last language:', lang || 'none');
+}
+
+async function on_install(ctx) {
+  // Run once — initialize default state
+  await ctx.redis.set('installed-at', new Date().toISOString());
+}</code></pre>
+
+                <h3>Plugin settings (per-user config)</h3>
+                <p>Store user-configurable settings in the <code>plugin_settings</code> table. The <code>settings</code> column is a JSONB object — query and update it like any other table.</p>
+                <pre><code class="language-javascript">async function on_install(ctx) {
+  // Create default settings for this user on install
+  await ctx.db.query(
+    `INSERT INTO plugin_settings (user_id, plugin, settings)
+     VALUES ($1, $2, $3)
+     ON CONFLICT (user_id, plugin) DO NOTHING`,
+    [ctx.user_id, 'my-plugin', JSON.stringify({ notify: true, threshold: 3600 })]
+  );
+}
+
+async function on_tick(ctx) {
+  const rows = await ctx.db.query(
+    'SELECT settings FROM plugin_settings WHERE user_id = $1 AND plugin = $2',
+    [ctx.user_id, 'my-plugin']
+  );
+  const settings = rows[0]?.settings || {};
+  if (settings.notify) {
+    log('Notifications enabled — threshold:', settings.threshold, 's');
+  }
+}</code></pre>
+
+                <h3>Custom HTTP endpoints (RPC)</h3>
+                <p>Declare an <code>endpoints</code> object to expose custom POST routes. Each key becomes a handler available at:</p>
+                <pre><code>POST /api/v1/plugins/&lt;plugin-name&gt;/rpc/&lt;handler-name&gt;</code></pre>
+                <p>Every handler receives <code>(ctx, req)</code> where <code>req</code> is the parsed JSON body of the request. Return any JSON-serializable value — it becomes the response body.</p>
+                <pre><code class="language-javascript">const endpoints = {
+
+  // POST /api/v1/plugins/my-plugin/rpc/stats
+  'stats': async (ctx, req) => {
+    const rows = await ctx.db.query(
+      `SELECT COUNT(*) as sessions, SUM(duration_seconds) as total_secs
+       FROM heartbeats WHERE user_id = $1`,
+      [ctx.user_id]
+    );
+    return {
+      sessions: rows[0].sessions,
+      total_hours: (rows[0].total_secs / 3600).toFixed(1)
+    };
+  },
+
+  // POST /api/v1/plugins/my-plugin/rpc/set-threshold
+  // Body: { "threshold": 7200 }
+  'set-threshold': async (ctx, req) => {
+    const threshold = Number(req.threshold) || 3600;
+    await ctx.db.query(
+      `UPDATE plugin_settings SET settings = settings || $1
+       WHERE user_id = $2 AND plugin = $3`,
+      [JSON.stringify({ threshold }), ctx.user_id, 'my-plugin']
+    );
+    return { ok: true, threshold };
+  },
+
+  // POST /api/v1/plugins/my-plugin/rpc/delete-account
+  'delete-account': async (ctx, req) => {
+    await ctx.db.query(
+      'DELETE FROM users WHERE id = $1',
+      [ctx.user_id]
+    );
+    return { ok: true };
+  },
+
+};</code></pre>
+                <p>Call your endpoint with Bearer auth:</p>
+                <pre><code class="language-bash"># No body required
+curl -X POST https://codetrackr.leapcell.app/api/v1/plugins/my-plugin/rpc/stats \
+  -H "Authorization: Bearer YOUR_TOKEN"
+
+# With a JSON body
+curl -X POST https://codetrackr.leapcell.app/api/v1/plugins/my-plugin/rpc/set-threshold \
+  -H "Authorization: Bearer YOUR_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{ "threshold": 7200 }'</code></pre>
+                <p>Handler names may only contain alphanumeric characters, hyphens, and underscores. Any other characters are stripped before dispatch.</p>
+
+                <h3>Calling RPC from a widget plugin</h3>
+                <p>Lifecycle RPC endpoints are ideal as the data backend for your widget plugin. Call them from the widget script using the provided <code>token</code>:</p>
+                <pre><code class="language-javascript">// In your widget script (runs in the browser)
+fetch('/api/v1/plugins/my-plugin/rpc/stats', {
+  method: 'POST',
+  headers: { 'Authorization': 'Bearer ' + token }
+})
+.then(r => r.json())
+.then(data => {
+  container.textContent = data.total_hours + 'h total';
+})
+.catch(() => {
+  container.textContent = '—';
+});</code></pre>
+
+                <h3>Sandbox limits</h3>
+                <div class="table-wrapper">
+                    <table>
+                        <thead><tr><th>Limit</th><th>Value</th></tr></thead>
+                        <tbody>
+                            <tr><td class="td-main">Memory</td><td>16 MB per execution</td></tr>
+                            <tr><td class="td-main">Stack size</td><td>512 KB</td></tr>
+                            <tr><td class="td-main">Execution timeout</td><td>15 seconds (both lifecycle hooks and RPC handlers)</td></tr>
+                            <tr><td class="td-main">Network access</td><td>None — <code>fetch</code>, <code>XMLHttpRequest</code>, and sockets are not available</td></tr>
+                            <tr><td class="td-main">Filesystem access</td><td>None — <code>require</code>, <code>fs</code>, and Node.js APIs are not available</td></tr>
+                            <tr><td class="td-main">Browser globals</td><td>None — <code>window</code>, <code>document</code>, <code>localStorage</code>, etc. are not available</td></tr>
+                            <tr><td class="td-main">Allowed SQL commands</td><td><code>SELECT</code>, <code>INSERT</code>, <code>UPDATE</code>, <code>DELETE</code></td></tr>
+                        </tbody>
+                    </table>
+                </div>
+
+                <h3>Error handling</h3>
+                <p>Unhandled exceptions inside a handler are caught by the sandbox and returned as an error response. Always wrap risky logic in try/catch for clean error messages:</p>
+                <pre><code class="language-javascript">const endpoints = {
+  'safe-query': async (ctx, req) => {
+    try {
+      const rows = await ctx.db.query(
+        'SELECT COUNT(*) as n FROM heartbeats WHERE user_id = $1',
+        [ctx.user_id]
+      );
+      return { count: rows[0].n };
+    } catch (e) {
+      error('Query failed:', e.message);
+      return { error: 'Could not load data' };
+    }
+  }
+};</code></pre>
+
+                <h3>Full example — Streak notifier with RPC</h3>
+                <p>A complete lifecycle plugin that tracks the user's coding streak in Redis, checks for activity on every tick, and exposes an RPC endpoint so a widget plugin can display the streak count.</p>
+                <pre><code class="language-javascript">// ── on_install: initialize Redis state ───────────────────────────────────────
+async function on_install(ctx) {
+  await ctx.redis.set('streak', '0');
+  await ctx.redis.set('last-day', '');
+  log('Streak Notifier installed for', ctx.user_id);
+}
+
+// ── on_tick: check daily activity and update streak ───────────────────────────
+async function on_tick(ctx) {
+  const today = new Date().toISOString().slice(0, 10); // YYYY-MM-DD
+  const lastDay = await ctx.redis.get('last-day');
+
+  if (lastDay === today) {
+    return; // Already checked today
+  }
+
+  const rows = await ctx.db.query(
+    `SELECT 1 FROM heartbeats
+     WHERE user_id = $1
+       AND recorded_at &gt;= NOW() - INTERVAL '1 day'
+     LIMIT 1`,
+    [ctx.user_id]
+  );
+
+  if (rows.length > 0) {
+    const streak = await ctx.redis.incr('streak');
+    await ctx.redis.set('last-day', today);
+    log('Day ' + streak + ' of streak — keep it up!');
+  } else {
+    warn('No activity today — streak at risk!');
+  }
+}
+
+// ── on_heartbeat: reset risk flag when a heartbeat arrives ───────────────────
+async function on_heartbeat(ctx, heartbeat) {
+  const today = new Date().toISOString().slice(0, 10);
+  await ctx.redis.set('last-day', today);
+}
+
+// ── RPC: widget can call this to display the streak ──────────────────────────
+const endpoints = {
+  'get-streak': async (ctx, req) => {
+    const streak = await ctx.redis.get('streak');
+    const lastDay = await ctx.redis.get('last-day');
+    return {
+      streak: parseInt(streak || '0', 10),
+      last_day: lastDay || null
+    };
+  },
+
+  'reset-streak': async (ctx, req) => {
+    await ctx.redis.set('streak', '0');
+    await ctx.redis.set('last-day', '');
+    log('Streak reset by user', ctx.user_id);
+    return { ok: true };
+  }
+};</code></pre>
+                <p>Call <code>GET-streak</code> from your widget plugin to show the live streak count:</p>
+                <pre><code class="language-javascript">// Widget script
+fetch('/api/v1/plugins/streak-notifier/rpc/get-streak', {
+  method: 'POST',
+  headers: { 'Authorization': 'Bearer ' + token }
+})
+.then(r => r.json())
+.then(data => {
+  container.textContent = data.streak + ' day streak 🔥';
+})
+.catch(() => { container.textContent = '—'; });</code></pre>
+            </section>
+
+            <section id="import">
+                <h2>Import Data</h2>
+                <p>The <code>POST /api/v1/import</code> endpoint accepts an array of heartbeats in JSON format, allowing you to migrate data from any external tool. Authentication is via API Key or Bearer token.</p>
+
+                <h3>Request</h3>
+                <pre><code class="language-bash">curl -X POST https://codetrackr.dev/api/v1/import \
+  -H "X-API-Key: ct_xyz123" \
+  -H "Content-Type: application/json" \
+  -d '[
+    {
+      "project": "my-app",
+      "lang": "rust",
+      "file": "src/main.rs",
+      "branch": "main",
+      "editor": "Windsurf",
+      "os": "macOS",
+      "time": 1741276680,
+      "duration": 60
+    }
+  ]'</code></pre>
+
+                <h3>Payload fields</h3>
+                <div class="table-wrapper">
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>Field</th>
+                                <th>Required</th>
+                                <th>Description</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr>
+                                <td class="td-main"><code>project</code></td>
+                                <td>Yes</td>
+                                <td>Project or workspace name</td>
+                            </tr>
+                            <tr>
+                                <td class="td-main"><code>lang</code></td>
+                                <td>No</td>
+                                <td>Language identifier, e.g. <code>rust</code>, <code>html</code></td>
+                            </tr>
+                            <tr>
+                                <td class="td-main"><code>file</code></td>
+                                <td>No</td>
+                                <td>Relative file path</td>
+                            </tr>
+                            <tr>
+                                <td class="td-main"><code>branch</code></td>
+                                <td>No</td>
+                                <td>Git branch name</td>
+                            </tr>
+                            <tr>
+                                <td class="td-main"><code>commit</code></td>
+                                <td>No</td>
+                                <td>Git commit SHA</td>
+                            </tr>
+                            <tr>
+                                <td class="td-main"><code>workspace_root</code></td>
+                                <td>No</td>
+                                <td>Git remote URL or workspace root path</td>
+                            </tr>
+                            <tr>
+                                <td class="td-main"><code>editor</code></td>
+                                <td>No</td>
+                                <td>Editor name, e.g. <code>Windsurf</code>, <code>VS Code</code></td>
+                            </tr>
+                            <tr>
+                                <td class="td-main"><code>os</code></td>
+                                <td>No</td>
+                                <td>Operating system, e.g. <code>macOS</code>, <code>Linux</code></td>
+                            </tr>
+                            <tr>
+                                <td class="td-main"><code>machine</code></td>
+                                <td>No</td>
+                                <td>Machine identifier</td>
+                            </tr>
+                            <tr>
+                                <td class="td-main"><code>time</code></td>
+                                <td>No</td>
+                                <td>Unix timestamp of the activity. Defaults to current time if omitted</td>
+                            </tr>
+                            <tr>
+                                <td class="td-main"><code>duration</code></td>
+                                <td>No</td>
+                                <td>Duration in seconds. Defaults to <code>60</code></td>
+                            </tr>
+                            <tr>
+                                <td class="td-main"><code>is_write</code></td>
+                                <td>No</td>
+                                <td>Boolean — whether the event was a write action. Defaults to <code>false</code></td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+
+                <h3>Response</h3>
+                <pre><code class="language-json">{ "status": "ok", "inserted": 42 }</code></pre>
+
+                <h3>Notes</h3>
+                <ul>
+                    <li>Duplicate entries are silently ignored (<code>ON CONFLICT DO NOTHING</code>).</li>
+                    <li>You can send up to thousands of records in a single request — batch large imports to avoid timeouts.</li>
+                    <li>The <code>time</code> field accepts Unix timestamps (float or integer). If omitted, the server time is used.</li>
+                    <li>This endpoint is intentionally format-agnostic: write a small script to convert any source (WakaTime, CodeTime, custom logs) into this schema and POST it.</li>
+                </ul>
+            </section>
+
+            <section id="creating-extensions">
+                <h2>IDE Extensions API</h2>
+                <p>Drop a standard POST payload to the <code>/api/v1/heartbeat</code> endpoint with your API Key to
+                    track activity anywhere.</p>
+
+                <pre><code class="language-bash">curl -X POST https://codetrackr.dev/api/v1/heartbeat \
+  -H "X-API-Key: ct_xyz123" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "project": "core-engine",
+    "language": "rust",
+    "duration": 60
+  }'</code></pre>
+
+                <h3>Supported Environments</h3>
+                <p>You can build or use existing wrappers for an extensive list of platforms:</p>
+                <div class="ide-grid">
+                    <div class="ide-card">VS Code</div>
+                    <div class="ide-card">IntelliJ IDEA</div>
+                    <div class="ide-card">Neovim</div>
+                    <div class="ide-card">Vim</div>
+                    <div class="ide-card">Cursor</div>
+                    <div class="ide-card">Windsurf</div>
+                    <div class="ide-card">CLion</div>
+                    <div class="ide-card">WebStorm</div>
+                    <div class="ide-card">Eclipse</div>
+                    <div class="ide-card">Sublime Text</div>
+                    <div class="ide-card">Xcode</div>
+                    <div class="ide-card">Android Studio</div>
+                </div>
+
+                <h3>Bulk Pipeline Updates</h3>
+                <p>If your environment caches offline time, you can bulk post logs to <code>/api/v1/heartbeats</code> to
+                    restore histories seamlessly.</p>
+            </section>
+
+            <section id="plugin-store">
+                <h2>The Plugin Store</h2>
+                <p>The Plugin Store is a community directory of dashboard plugins. Any authenticated user can publish
+                    and install plugins. No server access or recompilation needed.</p>
+                <ul>
+                    <li><strong>Browse:</strong> All published plugins are visible on the home page under Plugin Store,
+                        no login required.</li>
+                    <li><strong>Install:</strong> One-click install. Installed plugins appear immediately on your
+                        dashboard next time you load it.</li>
+                    <li><strong>Uninstall:</strong> Click the <code>✕</code> button on any panel in your dashboard to
+                        remove it.</li>
+                    <li><strong>Privacy:</strong> Plugin scripts run entirely in the user's browser. CodeTrackr's
+                        servers never make requests to external services on your behalf.</li>
+                    <li><strong>Moderation:</strong> Users can report plugins. Admins can ban or delete them. Banned
+                        plugins stop loading for all users immediately.</li>
+                </ul>
+            </section>
+
+            <section id="submitting-a-package">
+                <h2>Publishing to the Store</h2>
+                <p>You must be authenticated via GitHub or GitLab to publish. Use the <strong>+ Publish Plugin</strong>
+                    button in your dashboard, or call the API directly:</p>
+
+                <pre><code class="language-bash">curl -X POST https://codetrackr.dev/api/v1/store/publish \
+  -H "Authorization: Bearer YOUR_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "name": "my-cool-widget",
+    "display_name": "Project Velocity",
+    "description": "Visualize your commit velocity over time.",
+    "version": "1.0.0",
+    "icon": "📈",
+    "widget_type": "counter",
+    "repository": "https://github.com/you/my-cool-widget",
+    "script": "container.textContent = \"Loading...\"; fetch(\"/api/v1/stats/summary?range=7d\",{headers:{\"Authorization\":\"Bearer \"+token}}).then(r=>r.json()).then(d=>{container.textContent=d.top_project||\"—\";}).catch(()=>{container.textContent=\"—\";});"
+  }'</code></pre>
+
+                <h3>Publish fields reference</h3>
+                <div class="table-wrapper">
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>Field</th>
+                                <th>Required</th>
+                                <th>Description</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr>
+                                <td class="td-main"><code>name</code></td>
+                                <td>Yes</td>
+                                <td>Unique kebab-case identifier, e.g. <code>streak-counter</code></td>
+                            </tr>
+                            <tr>
+                                <td class="td-main"><code>display_name</code></td>
+                                <td>Yes</td>
+                                <td>Human-readable title shown in the store and dashboard panel header</td>
+                            </tr>
+                            <tr>
+                                <td class="td-main"><code>description</code></td>
+                                <td>No</td>
+                                <td>Short description shown in the store card</td>
+                            </tr>
+                            <tr>
+                                <td class="td-main"><code>version</code></td>
+                                <td>No</td>
+                                <td>Semver string, defaults to <code>0.1.0</code></td>
+                            </tr>
+                            <tr>
+                                <td class="td-main"><code>icon</code></td>
+                                <td>No</td>
+                                <td>Single emoji shown next to the plugin title, defaults to <code>🔌</code></td>
+                            </tr>
+                            <tr>
+                                <td class="td-main"><code>widget_type</code></td>
+                                <td>No</td>
+                                <td><code>counter</code> · <code>chart</code> · <code>list</code> · <code>text</code> · <code>progress</code></td>
+                            </tr>
+                            <tr>
+                                <td class="td-main"><code>repository</code></td>
+                                <td>No</td>
+                                <td>URL to the plugin's source code</td>
+                            </tr>
+                            <tr>
+                                <td class="td-main"><code>script</code></td>
+                                <td>No</td>
+                                <td>JavaScript code executed in the user's browser. Receives <code>container</code> (DOM element) and <code>token</code> (Bearer token string)</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+                <h3>Updating an existing plugin</h3>
+                <p>Publishing with the same <code>name</code> performs an in-place update (upsert). All users who have
+                    the plugin installed will receive the new script on their next dashboard load — no reinstall
+                    required.</p>
+                <p>To update, call the same publish endpoint with the identical <code>name</code> and whatever fields
+                    you want to change:</p>
+                <pre><code class="language-bash">curl -X POST https://codetrackr.dev/api/v1/store/publish \
+  -H "Authorization: Bearer YOUR_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "name": "streak-counter",
+    "display_name": "Streak Counter",
+    "version": "1.1.0",
+    "script": "/* updated script */"
+  }'</code></pre>
+                <ul>
+                    <li>The <code>name</code> field is the unique key — it must match exactly (lowercase kebab-case).</li>
+                    <li>Only the fields you include are updated; omitted optional fields keep their previous values.</li>
+                    <li>Bump <code>version</code> so users can see a changelog in the store card.</li>
+                    <li>Only the original publisher (same authenticated user) can overwrite a plugin.</li>
+                </ul>
+            </section>
+
+
+            <!-- ═══════════════════════════════════════════════════════════ -->
+            <!-- UI FRAMEWORK                                               -->
+            <!-- ═══════════════════════════════════════════════════════════ -->
+
+            <section id="ui-tokens">
+                <h2>Design Tokens</h2>
+                <p>Include the main stylesheet and reference these CSS custom properties in your plugin HTML. All
+                    components below depend on them.</p>
+                <pre><code class="language-html">&lt;link rel="stylesheet" href="/static/css/main.css" /&gt;</code></pre>
+                <div class="token-grid">
+                    <div class="token-row"><span class="token-swatch" style="background:#121212;"></span><code>--bg</code><span class="token-val">#121212</span></div>
+                    <div class="token-row"><span class="token-swatch" style="background:#18181b;"></span><code>--bg-card</code><span class="token-val">#18181b</span></div>
+                    <div class="token-row"><span class="token-swatch" style="background:#27272a;"></span><code>--bg-hover</code><span class="token-val">#27272a</span></div>
+                    <div class="token-row"><span class="token-swatch" style="background:#ffffff;border:1px solid #27272a;"></span><code>--text-main</code><span class="token-val">#ffffff</span></div>
+                    <div class="token-row"><span class="token-swatch" style="background:#a1a1aa;"></span><code>--text-muted</code><span class="token-val">#a1a1aa</span></div>
+                    <div class="token-row"><span class="token-swatch" style="background:#52525b;"></span><code>--text-dark</code><span class="token-val">#52525b</span></div>
+                    <div class="token-row"><span class="token-swatch" style="background:#27272a;"></span><code>--border</code><span class="token-val">#27272a</span></div>
+                    <div class="token-row"><span class="token-swatch" style="background:#3f3f46;"></span><code>--border-focus</code><span class="token-val">#3f3f46</span></div>
+                </div>
+            </section>
+
+            <section id="ui-cards">
+                <h2>Cards</h2>
+                <p>Base container for any plugin panel. Use the <code>.card</code> class directly.</p>
+                <div class="ui-preview">
+                    <div class="card" style="max-width:280px;">
+                        <h3>Plugin Title</h3>
+                        <p>A short description or metric value goes here.</p>
+                    </div>
+                </div>
+                <pre><code class="language-html">&lt;div class="card"&gt;
+  &lt;h3&gt;Plugin Title&lt;/h3&gt;
+  &lt;p&gt;A short description or metric value.&lt;/p&gt;
+&lt;/div&gt;</code></pre>
+
+                <h3>Grid Layout</h3>
+                <p>Use <code>.grid-2</code> or <code>.grid-3</code> to lay out multiple cards side by side.</p>
+                <pre><code class="language-html">&lt;div class="grid-2"&gt;
+  &lt;div class="card"&gt;...&lt;/div&gt;
+  &lt;div class="card"&gt;...&lt;/div&gt;
+&lt;/div&gt;
+
+&lt;div class="grid-3"&gt;
+  &lt;div class="card"&gt;...&lt;/div&gt;
+  &lt;div class="card"&gt;...&lt;/div&gt;
+  &lt;div class="card"&gt;...&lt;/div&gt;
+&lt;/div&gt;</code></pre>
+            </section>
+
+            <section id="ui-stat">
+                <h2>Stat Widget</h2>
+                <p>The standard counter card used in the main dashboard. Combines a label, a large mono value, and an
+                    optional sub-label.</p>
+                <div class="ui-preview">
+                    <div class="card" style="max-width:200px;">
+                        <h3 style="font-size:11px; text-transform:uppercase; color:var(--text-dark); margin-bottom:8px;">Today</h3>
+                        <div style="font-size:28px; font-family:var(--font-mono); color:var(--text-main);">4h 22m</div>
+                        <div style="font-size:12px; color:var(--text-muted); margin-top:4px;">Rust</div>
+                    </div>
+                </div>
+                <pre><code class="language-html">&lt;div class="card"&gt;
+  &lt;h3 style="font-size:11px; text-transform:uppercase;
+             color:var(--text-dark); margin-bottom:8px;"&gt;
+    Label
+  &lt;/h3&gt;
+  &lt;div style="font-size:28px; font-family:var(--font-mono);
+              color:var(--text-main);"&gt;
+    4h 22m
+  &lt;/div&gt;
+  &lt;div style="font-size:12px; color:var(--text-muted); margin-top:4px;"&gt;
+    Sub-label
+  &lt;/div&gt;
+&lt;/div&gt;</code></pre>
+            </section>
+
+            <section id="ui-buttons">
+                <h2>Buttons</h2>
+                <p>Use the <code>.btn</code> class for any interactive action inside your plugin panel.</p>
+                <div class="ui-preview" style="display:flex; gap:12px; flex-wrap:wrap;">
+                    <button class="btn">Default</button>
+                    <button class="btn" style="border-color:var(--border-focus);">Outlined</button>
+                    <button class="btn" style="padding:4px 10px; font-size:11px;">Small</button>
+                    <button class="code-tab active">Tab Active</button>
+                    <button class="code-tab">Tab</button>
+                </div>
+                <pre><code class="language-html">&lt;!-- Default --&gt;
+&lt;button class="btn"&gt;Default&lt;/button&gt;
+
+&lt;!-- Outlined --&gt;
+&lt;button class="btn" style="border-color:var(--border-focus);"&gt;Outlined&lt;/button&gt;
+
+&lt;!-- Small --&gt;
+&lt;button class="btn" style="padding:4px 10px; font-size:11px;"&gt;Small&lt;/button&gt;
+
+&lt;!-- Tab group --&gt;
+&lt;div style="display:flex; gap:16px;"&gt;
+  &lt;button class="code-tab active"&gt;Tab A&lt;/button&gt;
+  &lt;button class="code-tab"&gt;Tab B&lt;/button&gt;
+&lt;/div&gt;</code></pre>
+            </section>
+
+            <section id="ui-badges">
+                <h2>Badges &amp; Pills</h2>
+                <p>Small inline labels for status, language, or category. Compose with inline styles on top of
+                    <code>.key-hint</code>.</p>
+                <div class="ui-preview" style="display:flex; gap:8px; flex-wrap:wrap; align-items:center;">
+                    <span class="key-hint">Rust</span>
+                    <span class="key-hint">★</span>
+                    <span class="key-hint" style="color:var(--text-main);">Live</span>
+                    <span style="font-size:10px; color:var(--text-dark);">● Active</span>
+                </div>
+                <pre><code class="language-html">&lt;!-- Mono badge (keyboard hint style) --&gt;
+&lt;span class="key-hint"&gt;Rust&lt;/span&gt;
+
+&lt;!-- Star / special --&gt;
+&lt;span class="key-hint"&gt;★&lt;/span&gt;
+
+&lt;!-- Live indicator --&gt;
+&lt;span style="font-size:10px; color:var(--text-dark);"&gt;● Live&lt;/span&gt;</code></pre>
+            </section>
+
+            <section id="ui-table">
+                <h2>Tables</h2>
+                <p>Minimal mono-font table with hover rows. Wrap in <code>.table-wrapper</code> for horizontal scroll
+                    on small viewports.</p>
+                <div class="ui-preview">
+                    <div class="table-wrapper">
+                        <table>
+                            <thead>
+                                <tr>
+                                    <th>Project</th>
+                                    <th>Language</th>
+                                    <th>Time</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <tr>
+                                    <td class="td-main">core-engine</td>
+                                    <td>Rust</td>
+                                    <td>3h 12m</td>
+                                </tr>
+                                <tr>
+                                    <td class="td-main">dashboard-ui</td>
+                                    <td>TypeScript</td>
+                                    <td>1h 44m</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+                <pre><code class="language-html">&lt;div class="table-wrapper"&gt;
+  &lt;table&gt;
+    &lt;thead&gt;
+      &lt;tr&gt;
+        &lt;th&gt;Project&lt;/th&gt;
+        &lt;th&gt;Language&lt;/th&gt;
+        &lt;th&gt;Time&lt;/th&gt;
+      &lt;/tr&gt;
+    &lt;/thead&gt;
+    &lt;tbody&gt;
+      &lt;tr&gt;
+        &lt;td class="td-main"&gt;core-engine&lt;/td&gt;
+        &lt;td&gt;Rust&lt;/td&gt;
+        &lt;td&gt;3h 12m&lt;/td&gt;
+      &lt;/tr&gt;
+    &lt;/tbody&gt;
+  &lt;/table&gt;
+&lt;/div&gt;</code></pre>
+            </section>
+
+            <section id="ui-bars">
+                <h2>Bar Charts</h2>
+                <p>Vertical bar chart used for daily activity. Each bar is a flex column with a percentage height and a
+                    tooltip via <code>title</code>.</p>
+                <div class="ui-preview">
+                    <div style="display:flex; align-items:flex-end; gap:6px; height:80px;">
+                        <div title="Mon · 1h 20m" style="flex:1; background:var(--border-focus); border-radius:2px 2px 0 0; height:35%;"></div>
+                        <div title="Tue · 3h 10m" style="flex:1; background:var(--border-focus); border-radius:2px 2px 0 0; height:80%;"></div>
+                        <div title="Wed · 2h 05m" style="flex:1; background:var(--border-focus); border-radius:2px 2px 0 0; height:52%;"></div>
+                        <div title="Thu · 4h 00m" style="flex:1; background:var(--border-focus); border-radius:2px 2px 0 0; height:100%;"></div>
+                        <div title="Fri · 0h 30m" style="flex:1; background:var(--border-focus); border-radius:2px 2px 0 0; height:13%;"></div>
+                        <div title="Sat · 1h 45m" style="flex:1; background:var(--border-focus); border-radius:2px 2px 0 0; height:44%;"></div>
+                        <div title="Sun · 2h 50m" style="flex:1; background:var(--border-focus); border-radius:2px 2px 0 0; height:70%;"></div>
+                    </div>
+                </div>
+                <pre><code class="language-html">&lt;div style="display:flex; align-items:flex-end; gap:6px; height:80px;"&gt;
+  &lt;!-- height% = (minutes / max_minutes) * 100 --&gt;
+  &lt;div title="Mon · 1h 20m"
+       style="flex:1; background:var(--border-focus);
+              border-radius:2px 2px 0 0; height:35%;"&gt;&lt;/div&gt;
+  &lt;div title="Tue · 3h 10m"
+       style="flex:1; background:var(--border-focus);
+              border-radius:2px 2px 0 0; height:80%;"&gt;&lt;/div&gt;
+  &lt;!-- repeat for each day --&gt;
+&lt;/div&gt;</code></pre>
+
+                <h3>Language Progress Bars</h3>
+                <p>Horizontal fill bars for language breakdowns inside a card.</p>
+                <div class="ui-preview">
+                    <div style="display:flex; flex-direction:column; gap:10px;">
+                        <div>
+                            <div style="display:flex; justify-content:space-between; font-size:12px; font-family:var(--font-mono); margin-bottom:4px;">
+                                <span style="color:var(--text-main);">Rust</span>
+                                <span style="color:var(--text-dark);">62%</span>
+                            </div>
+                            <div style="height:3px; background:var(--border); border-radius:99px;">
+                                <div style="width:62%; height:100%; background:var(--border-focus); border-radius:99px;"></div>
+                            </div>
+                        </div>
+                        <div>
+                            <div style="display:flex; justify-content:space-between; font-size:12px; font-family:var(--font-mono); margin-bottom:4px;">
+                                <span style="color:var(--text-main);">TypeScript</span>
+                                <span style="color:var(--text-dark);">28%</span>
+                            </div>
+                            <div style="height:3px; background:var(--border); border-radius:99px;">
+                                <div style="width:28%; height:100%; background:var(--border-focus); border-radius:99px;"></div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <pre><code class="language-html">&lt;div style="display:flex; flex-direction:column; gap:10px;"&gt;
+  &lt;div&gt;
+    &lt;div style="display:flex; justify-content:space-between;
+                font-size:12px; font-family:var(--font-mono); margin-bottom:4px;"&gt;
+      &lt;span style="color:var(--text-main);"&gt;Rust&lt;/span&gt;
+      &lt;span style="color:var(--text-dark);"&gt;62%&lt;/span&gt;
+    &lt;/div&gt;
+    &lt;div style="height:3px; background:var(--border); border-radius:99px;"&gt;
+      &lt;div style="width:62%; height:100%;
+                  background:var(--border-focus); border-radius:99px;"&gt;&lt;/div&gt;
+    &lt;/div&gt;
+  &lt;/div&gt;
+&lt;/div&gt;</code></pre>
+            </section>
+
+            <section id="ui-code">
+                <h2>Code Blocks</h2>
+                <p>Use a <code>&lt;pre&gt;&lt;code&gt;</code> pair. The <code>pre</code> style is defined globally in
+                    <code>main.css</code> — no extra class needed.</p>
+                <pre><code class="language-html">&lt;pre&gt;&lt;code&gt;your code here&lt;/code&gt;&lt;/pre&gt;</code></pre>
+
+                <h3>Inline Code</h3>
+                <pre><code class="language-html">&lt;code&gt;/api/v1/heartbeat&lt;/code&gt;</code></pre>
+
+                <h3>Tab Group + Code Block</h3>
+                <p>Combine <code>.code-tabs</code> and <code>.code-tab</code> above a <code>pre</code> to switch
+                    between snippets.</p>
+                <div class="ui-preview">
+                    <div style="border:1px solid var(--border); border-radius:var(--radius); overflow:hidden;">
+                        <div class="code-tabs">
+                            <button class="code-tab active">curl</button>
+                            <button class="code-tab">Python</button>
+                            <button class="code-tab">Rust</button>
+                        </div>
+                        <pre style="margin:0; border:none; border-radius:0;"><code>curl -X POST /api/v1/heartbeat \
+  -H "X-API-Key: ct_xyz123"</code></pre>
+                    </div>
+                </div>
+                <pre><code class="language-html">&lt;div style="border:1px solid var(--border); border-radius:var(--radius); overflow:hidden;"&gt;
+  &lt;div class="code-tabs"&gt;
+    &lt;button class="code-tab active"&gt;curl&lt;/button&gt;
+    &lt;button class="code-tab"&gt;Python&lt;/button&gt;
+  &lt;/div&gt;
+  &lt;pre style="margin:0; border:none; border-radius:0;"&gt;
+    &lt;code&gt;your snippet&lt;/code&gt;
+  &lt;/pre&gt;
+&lt;/div&gt;</code></pre>
+            </section>
+
+            <section id="ui-progress">
+                <h2>Progress Bars</h2>
+                <p>Horizontal fill bars for progress indicators, file uploads, or import operations inside a widget plugin.</p>
+                <div class="ui-preview">
+                    <div style="display:flex; flex-direction:column; gap:12px;">
+                        <div>
+                            <div style="display:flex; justify-content:space-between; font-size:12px; font-family:var(--font-mono); margin-bottom:6px;">
+                                <span style="color:var(--text-muted);">Importing…</span>
+                                <span style="color:var(--text-dark);">64%</span>
+                            </div>
+                            <div style="width:100%; height:6px; background:var(--border); border-radius:4px; overflow:hidden;">
+                                <div style="width:64%; height:100%; background:var(--border-focus); border-radius:4px; transition:width .2s;"></div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <pre><code class="language-html">&lt;div style="width:100%; height:6px; background:var(--border);
+           border-radius:4px; overflow:hidden;"&gt;
+  &lt;div id="progressBar"
+       style="width:0%; height:100%; background:var(--border-focus);
+              border-radius:4px; transition:width .2s;"&gt;&lt;/div&gt;
+&lt;/div&gt;</code></pre>
+                <p>Update from JavaScript:</p>
+                <pre><code class="language-javascript">const bar = container.querySelector('#progressBar');
+bar.style.width = '64%';</code></pre>
+            </section>
+
+            <section id="ui-empty">
+                <h2>Empty States</h2>
+                <p>Show when a plugin panel has no data yet. Keep it minimal and mono.</p>
+                <div class="ui-preview">
+                    <div class="card" style="text-align:center; padding:40px 24px;">
+                        <div style="font-size:24px; margin-bottom:12px;">—</div>
+                        <div style="font-size:12px; color:var(--text-dark); font-family:var(--font-mono);">No data yet</div>
+                    </div>
+                </div>
+                <pre><code class="language-html">&lt;div class="card" style="text-align:center; padding:40px 24px;"&gt;
+  &lt;div style="font-size:24px; margin-bottom:12px;"&gt;—&lt;/div&gt;
+  &lt;div style="font-size:12px; color:var(--text-dark);
+              font-family:var(--font-mono);"&gt;
+    No data yet
+  &lt;/div&gt;
+&lt;/div&gt;</code></pre>
+
+                <h3>Loading State</h3>
+                <div class="ui-preview">
+                    <div style="font-size:12px; color:var(--text-muted);">Loading live data...</div>
+                </div>
+                <pre><code class="language-html">&lt;p style="color:var(--text-muted);"&gt;Loading live data...&lt;/p&gt;</code></pre>
+            </section>
+
+            <section id="ui-forms">
+                <h2>Forms &amp; Inputs</h2>
+                <p>Use standard HTML inputs styled with the design tokens. All inputs inside your widget plugin inherit the global stylesheet from <code>main.css</code>.</p>
+
+                <h3>Text input</h3>
+                <div class="ui-preview">
+                    <input type="text" placeholder="Enter value…" style="width:100%; max-width:320px; background:var(--bg); border:1px solid var(--border); border-radius:var(--radius-sm); padding:6px 10px; font-size:13px; font-family:var(--font-mono); color:var(--text-main); outline:none;">
+                </div>
+                <pre><code class="language-html">&lt;input type="text" placeholder="Enter value…"
+       style="width:100%; background:var(--bg);
+              border:1px solid var(--border);
+              border-radius:var(--radius-sm);
+              padding:6px 10px; font-size:13px;
+              font-family:var(--font-mono);
+              color:var(--text-main); outline:none;"&gt;</code></pre>
+
+                <h3>File input</h3>
+                <div class="ui-preview">
+                    <input type="file" style="font-size:12px; font-family:var(--font-mono); color:var(--text-muted);">
+                </div>
+                <pre><code class="language-html">&lt;input type="file" accept=".csv"
+       style="font-size:12px; font-family:var(--font-mono);
+              color:var(--text-muted);"&gt;</code></pre>
+
+                <h3>Status label</h3>
+                <div class="ui-preview">
+                    <div id="status" style="font-size:12px; color:var(--text-muted); font-family:var(--font-mono);">Waiting for file…</div>
+                </div>
+                <pre><code class="language-html">&lt;div id="status"
+     style="font-size:12px; color:var(--text-muted);
+            font-family:var(--font-mono);"&gt;
+  Waiting for file…
+&lt;/div&gt;</code></pre>
+
+                <h3>Full widget form example</h3>
+                <p>A complete import widget using progress bar, file input, button, and status label:</p>
+                <pre><code class="language-javascript">container.innerHTML = `
+&lt;div style="display:flex; flex-direction:column; gap:10px; max-width:420px;"&gt;
+  &lt;input type="file" id="csvFile" accept=".csv"
+         style="font-size:12px; font-family:var(--font-mono); color:var(--text-muted);"&gt;
+  &lt;button class="btn" id="importBtn" disabled
+          style="display:inline-flex; padding:4px 12px; font-size:12px;"&gt;
+    Import CSV
+  &lt;/button&gt;
+  &lt;div style="width:100%; height:6px; background:var(--border);
+              border-radius:4px; overflow:hidden;"&gt;
+    &lt;div id="progressBar" style="width:0%; height:100%; background:var(--border-focus);
+                                  border-radius:4px; transition:width .2s;"&gt;&lt;/div&gt;
+  &lt;/div&gt;
+  &lt;div id="status" style="font-size:12px; color:var(--text-muted);"&gt;&lt;/div&gt;
+&lt;/div&gt;
+`;
+
+const fileInput = container.querySelector('#csvFile');
+const button    = container.querySelector('#importBtn');
+const status    = container.querySelector('#status');
+const bar       = container.querySelector('#progressBar');
+
+fileInput.onchange = () => {
+  if (fileInput.files.length) {
+    button.disabled = false;
+    status.textContent = 'Ready: ' + fileInput.files[0].name;
+  }
+};
+
+button.onclick = async () => {
+  status.textContent = 'Uploading…';
+  // … your fetch logic here …
+  bar.style.width = '100%';
+  status.textContent = 'Done!';
+};</code></pre>
+            </section>
+
+            <div class="docs-footer">
+                © 2026 CodeTrackr Contributors. Data Privacy Guaranteed.
+            </div>
+        </main>
+    </div>
+
+    <!-- FOOTER -->
+    <footer class="footer">
+        <div class="container footer-inner">
+            <span>© 2026 CodeTrackr. Built with Rust + Axum.</span>
+            <div class="footer-links">
+                <a href="/docs">Docs</a>
+                <a href="https://github.com/codetrackr" target="_blank">Github</a>
+            </div>
+        </div>
+    </footer>
+
+    <script>
+        const sections = document.querySelectorAll('section[id]');
+        const links = document.querySelectorAll('.sidebar-link');
+
+        const observer = new IntersectionObserver((entries) => {
+            entries.forEach(entry => {
+                if (entry.isIntersecting) {
+                    links.forEach(l => l.classList.remove('active'));
+                    const active = document.querySelector(`.sidebar-link[href="#${entry.target.id}"]`);
+                    if (active) active.classList.add('active');
+                }
+            });
+        }, { rootMargin: '-20% 0px -70% 0px' });
+
+        sections.forEach(s => observer.observe(s));
+    </script>
+
+</body>
+
+</html>

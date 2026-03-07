@@ -1,0 +1,719 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>CodeTrackr — Code Time Tracking</title>
+  <meta name="description" content="Minimalist code time tracking for developers." />
+  <link rel="icon" type="image/png" href="/static/images/logo.png" />
+  <link rel="stylesheet" href="/static/css/main.css" />
+</head>
+
+<body>
+
+  <!-- NAV -->
+  <nav class="nav" id="nav">
+    <div class="container nav-inner">
+      <a href="/" class="nav-logo" id="nav-logo">CodeTrackr</a>
+      <ul class="nav-links">
+        <li><a href="/#stats" class="nav-link">Stats</a></li>
+        <li><a href="/#leaderboard" class="nav-link">Leaderboard</a></li>
+        <li><a href="/docs" class="nav-link">Docs</a></li>
+        <li id="nav-auth-item"><a href="/auth/github" class="nav-link">Login</a></li>
+        <li id="nav-user-item" style="display:none;">
+          <a href="javascript:void(0)" onclick="showProfile()" class="nav-user-pill">
+            <img id="nav-avatar" src="" alt="" style="width:24px; height:24px; border-radius:50%; margin-right:8px;">
+            <span id="nav-username"></span>
+          </a>
+        </li>
+      </ul>
+    </div>
+  </nav>
+
+  <!-- HERO / LOGIN -->
+  <section class="hero" id="hero">
+    <div class="container">
+      <div class="login-box">
+        <div class="hero-logo-big">CodeTrackr</div>
+        <p class="hero-desc">Please sign in to your account or <strong>Register</strong></p>
+        <div class="login-actions">
+          <a href="/auth/github" class="btn">
+            <span class="key-hint">H</span> Github
+          </a>
+          <a href="/auth/gitlab" class="btn">
+            <span class="key-hint">L</span> Gitlab
+          </a>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- STATS / OVERVIEW -->
+  <section class="section" id="stats">
+    <div class="container">
+      <div class="section-header">
+        <h2 class="section-title">Overview</h2>
+        <p class="section-desc">Live analytics and tracking.</p>
+      </div>
+      <div class="grid-3">
+        <div class="card">
+          <h3>Users Tracked</h3>
+          <p id="stat-devs" style="color:var(--text-muted);">Loading live data...</p>
+        </div>
+        <div class="card">
+          <h3>Total Time</h3>
+          <p id="stat-hours" style="color:var(--text-muted);">Loading live data...</p>
+        </div>
+        <div class="card">
+          <h3>Open Source</h3>
+          <p>Self-hostable privacy-first tracking</p>
+          <code>docker compose up -d</code>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- LEADERBOARD -->
+  <section class="section" id="leaderboard">
+    <div class="container">
+      <div class="section-header" style="display:flex; justify-content:space-between; align-items:baseline;">
+        <h2 class="section-title" style="margin:0;">Leaderboard</h2>
+        <div class="lb-controls" style="display:flex; gap:16px;" id="lb-tabs">
+          <button class="code-tab active" data-tab="global">Global</button>
+          <span style="font-size:10px; color:var(--text-dark); margin-left:8px;">● Live</span>
+        </div>
+      </div>
+
+      <div class="table-wrapper">
+        <table>
+          <thead>
+            <tr>
+              <th>User ID</th>
+              <th>Total Time ↓</th>
+              <th>Top Language</th>
+              <th>Top Editor</th>
+              <th>Top OS</th>
+            </tr>
+          </thead>
+          <tbody id="lb-rows">
+            <!-- Simulated rows -->
+            <tr>
+              <td class="td-main">cnk1tv...</td>
+              <td class="td-main">326h 53m</td>
+              <td>C++</td>
+              <td>VS Code</td>
+              <td>Linux</td>
+            </tr>
+            <tr>
+              <td class="td-main">cnetvo...</td>
+              <td class="td-main">322h 53m</td>
+              <td>TypeScript</td>
+              <td>Unknown</td>
+              <td>Linux</td>
+            </tr>
+            <tr>
+              <td class="td-main">cnhhj2...</td>
+              <td class="td-main">151h 9m</td>
+              <td>Java</td>
+              <td>IntelliJ</td>
+              <td>Windows</td>
+            </tr>
+            <tr>
+              <td class="td-main">cnipeh...</td>
+              <td class="td-main">129h 20m</td>
+              <td>Vue.js</td>
+              <td>VS Code</td>
+              <td>Windows</td>
+            </tr>
+            <tr>
+              <td class="td-main">cn8811...</td>
+              <td class="td-main">68h 4m</td>
+              <td>Rust</td>
+              <td>VSCodium</td>
+              <td>Linux</td>
+            </tr>
+            <tr>
+              <td class="td-main">cnfjinn...</td>
+              <td class="td-main">59h 42m</td>
+              <td>Python</td>
+              <td>VSCodium</td>
+              <td>Windows</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </section>
+
+  <!-- FEATURES -->
+  <section class="section" id="features">
+    <div class="container">
+      <div class="section-header">
+        <h2 class="section-title">Features</h2>
+        <p class="section-desc">Everything WakaTime has, and what it doesn't.</p>
+      </div>
+      <div class="grid-3">
+        <div class="card">
+          <h3>⚡ Drop-in API</h3>
+          <p>Drop-in API compatible with leading extensions. One endpoint, instant setup.</p>
+          <code>POST /api/v1/heartbeat</code>
+        </div>
+        <div class="card">
+          <h3>👨‍💻 Real-Time</h3>
+          <p>Live graphs. Watch your coding stats update as you type.</p>
+        </div>
+        <div class="card">
+          <h3>🏆 Leaderboards</h3>
+          <p>Top developers by language globally. Updated live via Redis.</p>
+        </div>
+        <div class="card">
+          <h3>🔌 Build Your Own Plugin</h3>
+          <p>Write a JavaScript snippet and publish it to the Plugin Store. Your panel appears on every installer's dashboard — no server needed.</p>
+          <a href="/docs#creating-plugins" style="font-size:12px; color:var(--text-dark);">Read the guide →</a>
+        </div>
+        <div class="card">
+          <h3>🛠 IDE Extension for Any Editor</h3>
+          <p>Build or use a community extension for VS Code, Neovim, IntelliJ, Zed, Emacs — any editor that can make an HTTP request.</p>
+          <a href="/docs#creating-extensions" style="font-size:12px; color:var(--text-dark);">See the API →</a>
+        </div>
+        <div class="card">
+          <h3>📤 Full Data Export</h3>
+          <p>Export JSON or CSV of your entire tracking history without a paywall.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+
+  <!-- DASHBOARD -->
+  <section class="section hidden" id="dashboard">
+    <div class="container">
+      <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:32px;">
+        <div style="display:flex; align-items:center; gap:16px;">
+          <img id="dash-avatar" src="" alt="" style="width:48px; height:48px; border-radius:50%; border:1px solid var(--border);">
+          <div>
+            <div id="dash-greeting" style="font-size:18px; color:var(--text-main);">Good morning!</div>
+            <div id="dash-date" style="font-size:12px; color:var(--text-muted);"></div>
+          </div>
+        </div>
+        <div style="display:flex; align-items:center; gap:16px;">
+          <span style="font-size:12px; color:var(--text-muted);">@<span id="dash-username"></span></span>
+          <span id="dash-pro-badge" style="display:none; font-size:11px; color:var(--text-dark);" class="key-hint">★ Pro</span>
+          <button id="btn-upgrade-pro" onclick="startCheckout(this)" style="display:none; font-size:12px; padding:4px 12px;" class="btn">★ Upgrade to Pro</button>
+          <button class="btn" onclick="logout()" style="color:var(--text-dark); font-size:12px; padding:4px 12px;">Logout</button>
+        </div>
+      </div>
+
+      <!-- Stat Cards -->
+      <div class="grid-3" style="margin-bottom:32px;">
+        <div class="card" id="dcard-today">
+          <h3 style="font-size:11px; text-transform:uppercase; color:var(--text-dark); margin-bottom:8px;">Today</h3>
+          <div id="dcard-today-val" style="font-size:28px; font-family:var(--font-mono); color:var(--text-main);">—</div>
+          <div id="dcard-today-lang" style="font-size:12px; color:var(--text-muted); margin-top:4px;">—</div>
+        </div>
+        <div class="card">
+          <h3 style="font-size:11px; text-transform:uppercase; color:var(--text-dark); margin-bottom:8px;">This Week</h3>
+          <div id="dcard-week-val" style="font-size:28px; font-family:var(--font-mono); color:var(--text-main);">—</div>
+          <div id="dcard-week-proj" style="font-size:12px; color:var(--text-muted); margin-top:4px;">—</div>
+        </div>
+        <div class="card">
+          <h3 style="font-size:11px; text-transform:uppercase; color:var(--text-dark); margin-bottom:8px;">Streak</h3>
+          <div id="dcard-streak-val" style="font-size:28px; font-family:var(--font-mono); color:var(--text-main);">—</div>
+          <div style="font-size:12px; color:var(--text-muted); margin-top:4px;">Current: <span id="dash-streak">—</span> days</div>
+        </div>
+      </div>
+
+      <div class="grid-2" style="margin-bottom:32px;">
+        <!-- Daily Chart -->
+        <div class="card dash-chart-card">
+          <h3 style="font-size:12px; text-transform:uppercase; color:var(--text-dark); margin-bottom:16px;">Daily Activity (7d)</h3>
+          <div id="chart-daily-container" style="display:flex; align-items:flex-end; gap:6px; height:80px;"></div>
+        </div>
+        <!-- Languages -->
+        <div class="card">
+          <h3 style="font-size:12px; text-transform:uppercase; color:var(--text-dark); margin-bottom:4px;">Top Language</h3>
+          <div id="dcard-lang-val" style="font-size:20px; font-family:var(--font-mono); color:var(--text-main); margin-bottom:2px;">—</div>
+          <div id="dcard-lang-pct" style="font-size:12px; color:var(--text-muted); margin-bottom:16px;">—</div>
+          <div id="lang-bars"></div>
+        </div>
+      </div>
+
+      <!-- API Key -->
+      <div class="card" style="margin-bottom:32px;">
+        <h3 style="font-size:12px; text-transform:uppercase; color:var(--text-dark); margin-bottom:12px;">API Key</h3>
+        <code id="dash-apikey" style="font-size:13px;">—</code>
+        <div style="margin-top:12px; display:flex; gap:8px;">
+          <button class="btn" id="btn-copy-key" style="padding:4px 10px; font-size:11px;">Copy</button>
+          <button class="btn" id="btn-new-key" style="padding:4px 10px; font-size:11px;">New Key</button>
+        </div>
+      </div>
+
+      <!-- Plugin Panels (installed) -->
+      <div id="dash-plugins" style="display:flex; flex-wrap:wrap; gap:16px; margin-bottom:32px;"></div>
+
+      <!-- PLUGIN STORE -->
+      <div id="plugin-store" style="margin-bottom:32px;">
+        <div style="display:flex; justify-content:space-between; align-items:baseline; margin-bottom:16px;">
+          <div>
+            <h2 class="section-title">Plugin Store</h2>
+            <p class="section-desc">Community-built plugins for the CodeTrackr web platform.</p>
+          </div>
+          <div class="lb-controls" style="display:flex; gap:16px; align-items:center;" id="store-controls">
+            <button class="btn" id="btn-publish-plugin" style="display:none; padding:4px 12px; font-size:12px;" onclick="openPublishModal()">+ Publish Plugin</button>
+            <a href="/cteditor" target="_blank" class="btn" id="btn-open-editor" style="display:none; padding:4px 12px; font-size:12px;">Plugin Editor</a>
+          </div>
+        </div>
+        <div class="grid-3" id="plugin-store-grid">
+          <!-- store plugins injected here -->
+          <div style="color:var(--text-muted); padding: 16px;">Loading plugins...</div>
+        </div>
+      </div>
+
+      <!-- Admin Panel (only shown if user is admin) -->
+      <div id="admin-panel" style="display:none; margin-bottom:32px;">
+        <div class="card">
+          <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:16px;">
+            <h3 style="font-size:12px; text-transform:uppercase; color:var(--text-dark); margin:0;">Admin — Plugin Store</h3>
+            <div style="display:flex; gap:8px;">
+              <button class="code-tab active" onclick="adminShowTab('plugins', this)">All Plugins</button>
+              <button class="code-tab" onclick="adminShowTab('reports', this)">Reports <span id="admin-reports-badge" style="display:none; background:var(--red,#e53); color:#fff; border-radius:99px; padding:0 6px; font-size:10px; margin-left:4px;">0</span></button>
+            </div>
+          </div>
+          <div id="admin-tab-plugins">
+            <div id="admin-plugins-list" style="display:flex; flex-direction:column; gap:8px;"></div>
+          </div>
+          <div id="admin-tab-reports" style="display:none;">
+            <div id="admin-reports-list" style="display:flex; flex-direction:column; gap:8px;"></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Public Profile Settings -->
+      <div class="card" style="margin-bottom:32px;" id="profile-settings-card">
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:16px;">
+          <h3 style="font-size:12px; text-transform:uppercase; color:var(--text-dark); margin:0;">Public Profile</h3>
+          <a id="dash-profile-link" href="#" target="_blank" style="font-size:11px; color:var(--text-dark);">↗ View my profile</a>
+        </div>
+        <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px; margin-bottom:16px;">
+          <div>
+            <label style="font-size:11px; color:var(--text-dark); display:block; margin-bottom:4px;">Bio</label>
+            <textarea id="profile-bio" rows="2" placeholder="Tell the world about yourself…" style="width:100%; background:var(--bg); border:1px solid var(--border); color:var(--text-main); padding:6px 10px; font-size:12px; border-radius:var(--radius-sm); box-sizing:border-box; resize:vertical;"></textarea>
+          </div>
+          <div>
+            <label style="font-size:11px; color:var(--text-dark); display:block; margin-bottom:4px;">Website</label>
+            <input id="profile-website" type="url" placeholder="https://your-site.com" style="width:100%; background:var(--bg); border:1px solid var(--border); color:var(--text-main); padding:6px 10px; font-size:12px; border-radius:var(--radius-sm); box-sizing:border-box;">
+          </div>
+        </div>
+        <div style="font-size:11px; color:var(--text-dark); margin-bottom:10px; text-transform:uppercase; letter-spacing:.05em;">Show on profile</div>
+        <div style="display:flex; flex-wrap:wrap; gap:10px; margin-bottom:16px;" id="profile-toggles">
+          <label style="display:flex; align-items:center; gap:6px; font-size:12px; cursor:pointer;"><input type="checkbox" id="ptog-public" onchange="saveProfileSettings()"> Public profile</label>
+          <label style="display:flex; align-items:center; gap:6px; font-size:12px; cursor:pointer;"><input type="checkbox" id="ptog-activity" onchange="saveProfileSettings()"> Activity</label>
+          <label style="display:flex; align-items:center; gap:6px; font-size:12px; cursor:pointer;"><input type="checkbox" id="ptog-streak" onchange="saveProfileSettings()"> Streak</label>
+          <label style="display:flex; align-items:center; gap:6px; font-size:12px; cursor:pointer;"><input type="checkbox" id="ptog-languages" onchange="saveProfileSettings()"> Languages</label>
+          <label style="display:flex; align-items:center; gap:6px; font-size:12px; cursor:pointer;"><input type="checkbox" id="ptog-projects" onchange="saveProfileSettings()"> Projects</label>
+          <label style="display:flex; align-items:center; gap:6px; font-size:12px; cursor:pointer;"><input type="checkbox" id="ptog-plugins" onchange="saveProfileSettings()"> Plugins</label>
+        </div>
+        <button class="btn" style="font-size:12px;" onclick="saveProfileSettings()">Save Profile</button>
+        <span id="profile-save-status" style="font-size:11px; color:var(--accent); margin-left:10px; display:none;">Saved!</span>
+      </div>
+
+    </div>
+  </section>
+
+  <!-- PUBLIC PROFILE VIEW -->
+  <section class="section hidden" id="public-profile">
+    <div class="container" style="max-width:720px;">
+      <!-- Header -->
+      <div style="display:flex; align-items:flex-start; gap:20px; margin-bottom:28px; flex-wrap:wrap;">
+        <img id="pp-avatar" src="" alt="" style="width:72px; height:72px; border-radius:50%; border:1px solid var(--border); flex-shrink:0;">
+        <div style="flex:1; min-width:180px;">
+          <div style="display:flex; align-items:center; gap:12px; flex-wrap:wrap; margin-bottom:4px;">
+            <h2 style="margin:0; font-size:20px;" id="pp-display-name"></h2>
+            <span style="font-size:13px; color:var(--text-dark);" id="pp-username"></span>
+            <span class="key-hint" style="font-size:10px; display:none;" id="pp-plan"></span>
+          </div>
+          <p style="margin:4px 0 8px; font-size:13px; color:var(--text-muted); line-height:1.5;" id="pp-bio"></p>
+          <div style="display:flex; gap:16px; flex-wrap:wrap; font-size:12px; color:var(--text-dark);">
+            <span><strong id="pp-followers">0</strong> followers</span>
+            <span><strong id="pp-following">0</strong> following</span>
+            <span id="pp-country"></span>
+            <a id="pp-website" href="#" target="_blank" style="color:var(--text-dark); display:none;">↗ website</a>
+          </div>
+        </div>
+        <div id="pp-actions" style="flex-shrink:0;"></div>
+      </div>
+
+      <!-- Streak + Weekly -->
+      <div class="grid-3" style="margin-bottom:24px;" id="pp-stats-row">
+        <div class="card" id="pp-streak-card">
+          <h3 style="font-size:11px; text-transform:uppercase; color:var(--text-dark); margin-bottom:4px;">Streak</h3>
+          <div style="font-size:24px; font-family:var(--font-mono);" id="pp-streak">—</div>
+          <div style="font-size:11px; color:var(--text-muted);">days</div>
+        </div>
+        <div class="card" id="pp-activity-card">
+          <h3 style="font-size:11px; text-transform:uppercase; color:var(--text-dark); margin-bottom:4px;">This Week</h3>
+          <div style="font-size:24px; font-family:var(--font-mono);" id="pp-weekly">—</div>
+          <div style="font-size:11px; color:var(--text-muted);">coded</div>
+        </div>
+        <div class="card">
+          <h3 style="font-size:11px; text-transform:uppercase; color:var(--text-dark); margin-bottom:4px;">Member since</h3>
+          <div style="font-size:14px; font-family:var(--font-mono);" id="pp-since">—</div>
+        </div>
+      </div>
+
+      <!-- Languages -->
+      <div class="card" style="margin-bottom:24px; display:none;" id="pp-languages-card">
+        <h3 style="font-size:12px; text-transform:uppercase; color:var(--text-dark); margin-bottom:12px;">Languages (30d)</h3>
+        <div id="pp-lang-bars"></div>
+      </div>
+
+      <!-- Projects -->
+      <div class="card" style="margin-bottom:24px; display:none;" id="pp-projects-card">
+        <h3 style="font-size:12px; text-transform:uppercase; color:var(--text-dark); margin-bottom:12px;">Projects (30d)</h3>
+        <div id="pp-projects-list"></div>
+      </div>
+
+      <!-- Plugins -->
+      <div style="margin-bottom:24px; display:none;" id="pp-plugins-card">
+        <h3 style="font-size:12px; text-transform:uppercase; color:var(--text-dark); margin-bottom:12px;">Published Plugins</h3>
+        <div class="grid-3" id="pp-plugins-grid"></div>
+      </div>
+
+      <button class="btn" style="font-size:12px; color:var(--text-dark);" onclick="closePublicProfile()">← Back</button>
+    </div>
+  </section>
+
+
+  <!-- PRICING -->
+  <section class="section" id="pricing">
+    <div class="container">
+      <div class="section-header">
+        <h2 class="section-title">Pricing</h2>
+        <p class="section-desc">Minimalist, honest pricing model.</p>
+      </div>
+      <div class="grid-3">
+        <div class="card" style="display:flex; flex-direction:column; justify-content:space-between; height: 100%;">
+          <div>
+            <h3>Free</h3>
+            <p style="font-size:24px; color:var(--text-main); font-family:var(--font-mono); margin: 8px 0 16px;">$0
+              <span style="font-size:12px; color:var(--text-dark);">/mo</span>
+            </p>
+            <ul
+              style="list-style-type: none; padding:0; margin-bottom: 24px; color:var(--text-muted); font-size:13px; line-height:2;">
+              <li>- Unlimited heartbeats</li>
+              <li>- Real-time dashboard</li>
+              <li>- Language &amp; project stats</li>
+              <li>- Global &amp; language leaderboards</li>
+              <li>- Public profile</li>
+              <li>- Follow developers</li>
+              <li>- Plugin Store</li>
+              <li>- IDE extensions support</li>
+              <li>- GitHub &amp; GitLab login</li>
+              <li>- 90-day history</li>
+            </ul>
+          </div>
+          <a href="/auth/github" class="btn" style="width:100%; justify-content:center;">Register</a>
+        </div>
+
+        <div class="card"
+          style="border-color:var(--text-dark); display:flex; flex-direction:column; justify-content:space-between; height: 100%;">
+          <div>
+            <h3 style="color:var(--text-main);">Pro <span class="key-hint" style="margin-left:8px;">★</span></h3>
+            <p style="font-size:24px; color:var(--text-main); font-family:var(--font-mono); margin: 8px 0 16px;">$1
+              <span style="font-size:12px; color:var(--text-dark);">/mo</span>
+            </p>
+            <ul
+              style="list-style-type: none; padding:0; margin-bottom: 24px; color:var(--text-muted); font-size:13px; line-height:2;">
+              <li>- <strong>Everything in Free</strong></li>
+              <li>- <strong>Unlimited history</strong></li>
+              <li>- Support development</li>
+            </ul>
+          </div>
+          <a href="/auth/github" class="btn"
+            style="width:100%; justify-content:center; border-color:var(--border-focus);">Get Pro</a>
+        </div>
+
+        <div class="card"
+          style="background:transparent; display:flex; flex-direction:column; justify-content:space-between; height: 100%;">
+          <div>
+            <h3>Self-Host</h3>
+            <p style="font-size:24px; color:var(--text-main); font-family:var(--font-mono); margin: 8px 0 16px;">Free
+            </p>
+            <ul
+              style="list-style-type: none; padding:0; margin-bottom: 24px; color:var(--text-muted); font-size:13px; line-height:2;">
+              <li>- Full source code (Rust + Axum)</li>
+              <li>- Docker Compose included</li>
+              <li>- All Pro features unlocked</li>
+              <li>- Your own plugin ecosystem</li>
+              <li>- Zero telemetry</li>
+              <li>- Full data control</li>
+            </ul>
+          </div>
+          <a href="https://github.com/codetrackr/codetrackr" target="_blank" class="btn"
+            style="width:100%; justify-content:center; opacity:0.7;">View on Github</a>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ABOUT LETTER -->
+  <section class="section" id="about">
+    <div class="container">
+      <div class="letter-wrapper">
+        <div class="letter-inner">
+          <div class="letter-seal">
+            Privacy<br>First<br>Analytics
+          </div>
+
+          <span class="letter-tag">A Letter</span>
+          <h2 class="letter-title">From the developer</h2>
+
+          <div class="letter-body">
+            <p>👋 Hey there! I'm Livrädo Sandoval (@livrasand), a full stack<br>
+              software developer coding in Python, JavaScript, TypeScript and Go.<br>
+              I usually drink coffee.</p>
+
+            <p>Throughout my open-source journey, I've built tools like<br>
+              gitGost, EthicalMetrics, PythonICO, and pipq — all designed with<br>
+              a strong focus on privacy and developer empowerment.</p>
+
+            <hr style="border:none; border-top:1px solid var(--border); width:40px; margin: 32px 0;">
+
+            <p>CodeTrackr is the culmination of this philosophy: an alternative<br>
+              to closed data silos. We're confident that the future of developer<br>
+              metrics lies in transparent, local-first analytics where you own<br>
+              your data. Crafted from the ground up, we are here to make<br>
+              this vision a reality.</p>
+          </div>
+
+          <div class="letter-footer">
+            <div class="letter-avatar">
+              <img src="https://github.com/livrasand.png" alt="Livrädo Sandoval">
+            </div>
+            <div>
+              <div class="letter-author-name">Livrädo Sandoval</div>
+              <div class="letter-author-sub">Developer</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- FOOTER -->
+  <footer class="footer">
+    <div class="container footer-inner">
+      <span>© 2026 CodeTrackr. Built with Rust + Axum.</span>
+      <div class="footer-links">
+        <a href="/docs">Docs</a>
+        <a href="https://github.com/codetrackr" target="_blank">Github</a>
+      </div>
+    </div>
+  </footer>
+
+  <!-- MODAL: Publish Plugin -->
+  <div id="modal-publish" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,.7); z-index:1000; align-items:center; justify-content:center;">
+    <div class="card" style="width:100%; max-width:480px; margin:0 16px; max-height:90vh; overflow-y:auto;">
+      <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:20px;">
+        <h3 style="margin:0; font-size:14px; color:var(--text-main);">Publish Plugin</h3>
+        <button onclick="closePublishModal()" style="background:none; border:none; color:var(--text-muted); cursor:pointer; font-size:18px;">✕</button>
+      </div>
+      <div style="display:flex; flex-direction:column; gap:12px;">
+        <div>
+          <label style="font-size:11px; color:var(--text-dark); display:block; margin-bottom:4px;">Name (kebab-case) *</label>
+          <input id="pub-name" type="text" placeholder="my-plugin" style="width:100%; background:var(--bg-card); border:1px solid var(--border); color:var(--text-main); padding:8px 10px; font-size:13px; font-family:var(--font-mono); border-radius:4px; box-sizing:border-box;">
+        </div>
+        <div>
+          <label style="font-size:11px; color:var(--text-dark); display:block; margin-bottom:4px;">Display Name *</label>
+          <input id="pub-display-name" type="text" placeholder="My Plugin" style="width:100%; background:var(--bg-card); border:1px solid var(--border); color:var(--text-main); padding:8px 10px; font-size:13px; border-radius:4px; box-sizing:border-box;">
+        </div>
+        <div>
+          <label style="font-size:11px; color:var(--text-dark); display:block; margin-bottom:4px;">Description</label>
+          <textarea id="pub-description" rows="2" placeholder="What does this plugin do?" style="width:100%; background:var(--bg-card); border:1px solid var(--border); color:var(--text-main); padding:8px 10px; font-size:13px; border-radius:4px; box-sizing:border-box; resize:vertical;"></textarea>
+        </div>
+        <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px;">
+          <div>
+            <label style="font-size:11px; color:var(--text-dark); display:block; margin-bottom:4px;">Version</label>
+            <input id="pub-version" type="text" placeholder="0.1.0" style="width:100%; background:var(--bg-card); border:1px solid var(--border); color:var(--text-main); padding:8px 10px; font-size:13px; font-family:var(--font-mono); border-radius:4px; box-sizing:border-box;">
+          </div>
+          <div>
+            <label style="font-size:11px; color:var(--text-dark); display:block; margin-bottom:4px;">Icon (emoji)</label>
+            <input id="pub-icon" type="text" placeholder="🔌" style="width:100%; background:var(--bg-card); border:1px solid var(--border); color:var(--text-main); padding:8px 10px; font-size:13px; border-radius:4px; box-sizing:border-box;">
+          </div>
+        </div>
+        <div>
+          <label style="font-size:11px; color:var(--text-dark); display:block; margin-bottom:4px;">Repository URL</label>
+          <input id="pub-repo" type="text" placeholder="https://github.com/you/plugin" style="width:100%; background:var(--bg-card); border:1px solid var(--border); color:var(--text-main); padding:8px 10px; font-size:13px; border-radius:4px; box-sizing:border-box;">
+        </div>
+        <div>
+          <label style="font-size:11px; color:var(--text-dark); display:block; margin-bottom:4px;">Widget Type</label>
+          <select id="pub-widget-type" style="width:100%; background:var(--bg-card); border:1px solid var(--border); color:var(--text-main); padding:8px 10px; font-size:13px; border-radius:4px; box-sizing:border-box;">
+            <option value="counter">Counter</option>
+            <option value="chart">Chart</option>
+            <option value="list">List</option>
+            <option value="text">Text</option>
+            <option value="progress">Progress</option>
+          </select>
+        </div>
+        <div>
+          <label style="font-size:11px; color:var(--text-dark); display:block; margin-bottom:4px;">Plugin Script (JavaScript) <span style="color:var(--text-muted);">— runs in the user's browser. Use <code>container</code> (DOM element) and <code>token</code> (Bearer token) as variables.</span></label>
+          <textarea id="pub-script" rows="8" placeholder="container.textContent = 'Loading...';&#10;&#10;fetch('/api/v1/stats/summary?range=7d', {&#10;  headers: { 'Authorization': 'Bearer ' + token }&#10;})&#10;.then(function(r) { return r.json(); })&#10;.then(function(data) {&#10;  var s = data.total_seconds || 0;&#10;  container.textContent = Math.floor(s/3600) + 'h ' + Math.floor((s%3600)/60) + 'm this week';&#10;})&#10;.catch(function() { container.textContent = '—'; });" style="width:100%; background:var(--bg-card); border:1px solid var(--border); color:var(--text-main); padding:8px 10px; font-size:12px; font-family:var(--font-mono); border-radius:4px; box-sizing:border-box; resize:vertical;"></textarea>
+        </div>
+        <div id="pub-error" style="display:none; color:#e53; font-size:12px;"></div>
+        <button class="btn" onclick="submitPublishPlugin()" id="btn-submit-publish" style="width:100%; justify-content:center;">Publish</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- MODAL: Report Plugin -->
+  <div id="modal-report" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,.7); z-index:1000; align-items:center; justify-content:center;">
+    <div class="card" style="width:100%; max-width:400px; margin:0 16px;">
+      <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:20px;">
+        <h3 style="margin:0; font-size:14px; color:var(--text-main);">Report Plugin</h3>
+        <button onclick="closeReportModal()" style="background:none; border:none; color:var(--text-muted); cursor:pointer; font-size:18px;">✕</button>
+      </div>
+      <input type="hidden" id="report-plugin-id">
+      <div style="display:flex; flex-direction:column; gap:12px;">
+        <div>
+          <label style="font-size:11px; color:var(--text-dark); display:block; margin-bottom:4px;">Reason *</label>
+          <select id="report-reason" style="width:100%; background:var(--bg-card); border:1px solid var(--border); color:var(--text-main); padding:8px 10px; font-size:13px; border-radius:4px; box-sizing:border-box;">
+            <option value="spam">Spam</option>
+            <option value="malware">Malware / Security risk</option>
+            <option value="inappropriate">Inappropriate content</option>
+            <option value="broken">Broken / Not working</option>
+            <option value="other">Other</option>
+          </select>
+        </div>
+        <div>
+          <label style="font-size:11px; color:var(--text-dark); display:block; margin-bottom:4px;">Details (optional)</label>
+          <textarea id="report-description" rows="3" placeholder="Describe the issue..." style="width:100%; background:var(--bg-card); border:1px solid var(--border); color:var(--text-main); padding:8px 10px; font-size:13px; border-radius:4px; box-sizing:border-box; resize:vertical;"></textarea>
+        </div>
+        <div id="report-error" style="display:none; color:#e53; font-size:12px;"></div>
+        <button class="btn" onclick="submitReport()" style="width:100%; justify-content:center;">Submit Report</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- TOAST container -->
+  <div id="toast-container" style="position:fixed; bottom:24px; right:24px; z-index:2000; display:flex; flex-direction:column; gap:10px; pointer-events:none;"></div>
+
+  <!-- MODAL: Plugin Detail -->
+  <div id="modal-plugin-detail" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,.75); z-index:1500; align-items:flex-start; justify-content:center; overflow-y:auto; padding:24px 16px;">
+    <div class="card" style="width:100%; max-width:680px; margin:0 auto; display:flex; flex-direction:column; gap:20px;">
+
+      <!-- Header -->
+      <div style="display:flex; justify-content:space-between; align-items:flex-start;">
+        <div style="flex:1;">
+          <div style="display:flex; align-items:center; gap:10px; flex-wrap:wrap;">
+            <h3 style="margin:0; font-size:16px;" id="detail-title"></h3>
+            <span class="key-hint" style="font-size:10px; padding:2px 6px;" id="detail-version"></span>
+          </div>
+          <div style="font-size:11px; color:var(--text-dark); font-family:var(--font-mono); margin-top:4px;" id="detail-name"></div>
+          <div style="display:flex; align-items:center; gap:8px; margin-top:6px;">
+            <span id="detail-stars" style="font-size:14px; letter-spacing:1px;"></span>
+            <span style="font-size:11px; color:var(--text-dark);" id="detail-rating-count"></span>
+          </div>
+        </div>
+        <button onclick="closePluginDetailModal()" style="background:none; border:none; color:var(--text-muted); cursor:pointer; font-size:18px; flex-shrink:0;">✕</button>
+      </div>
+
+      <!-- Description -->
+      <p style="margin:0; font-size:13px; color:var(--text-muted); line-height:1.6;" id="detail-description"></p>
+
+      <!-- Meta row -->
+      <div style="display:flex; gap:16px; flex-wrap:wrap; font-size:11px; color:var(--text-dark);">
+        <span>↓ <span id="detail-installs"></span> installs</span>
+        <a id="detail-repo" href="#" target="_blank" style="color:var(--text-dark); display:none;">↗ repository</a>
+      </div>
+
+      <!-- Action buttons -->
+      <div style="display:flex; gap:8px; flex-wrap:wrap;" id="detail-actions"></div>
+
+      <!-- Screenshots -->
+      <div id="detail-screenshots-section" style="display:none;">
+        <div style="font-size:11px; color:var(--text-dark); margin-bottom:8px; text-transform:uppercase; letter-spacing:.05em;">Screenshots</div>
+        <div id="detail-screenshots" style="display:flex; gap:8px; overflow-x:auto; padding-bottom:4px;"></div>
+        <div id="detail-screenshot-form" style="display:none; margin-top:10px; display:flex; gap:6px; flex-wrap:wrap;">
+          <input id="detail-screenshot-url" type="url" placeholder="Image URL…" style="flex:1; min-width:160px; background:var(--bg); border:1px solid var(--border); color:var(--text-main); padding:6px 10px; font-size:12px; border-radius:var(--radius-sm);">
+          <input id="detail-screenshot-caption" type="text" placeholder="Caption (optional)" style="flex:1; min-width:120px; background:var(--bg); border:1px solid var(--border); color:var(--text-main); padding:6px 10px; font-size:12px; border-radius:var(--radius-sm);">
+          <button class="btn" style="font-size:12px;" onclick="submitScreenshot()">Add</button>
+        </div>
+      </div>
+
+      <!-- Rate & Review -->
+      <div id="detail-review-section" style="display:none;">
+        <div style="font-size:11px; color:var(--text-dark); margin-bottom:8px; text-transform:uppercase; letter-spacing:.05em;">Rate & Review</div>
+        <div style="display:flex; gap:4px; margin-bottom:8px;" id="detail-star-input">
+          <button onclick="setDetailRating(1)" class="btn" style="font-size:16px; padding:2px 4px; background:none; border:none; cursor:pointer;">☆</button>
+          <button onclick="setDetailRating(2)" class="btn" style="font-size:16px; padding:2px 4px; background:none; border:none; cursor:pointer;">☆</button>
+          <button onclick="setDetailRating(3)" class="btn" style="font-size:16px; padding:2px 4px; background:none; border:none; cursor:pointer;">☆</button>
+          <button onclick="setDetailRating(4)" class="btn" style="font-size:16px; padding:2px 4px; background:none; border:none; cursor:pointer;">☆</button>
+          <button onclick="setDetailRating(5)" class="btn" style="font-size:16px; padding:2px 4px; background:none; border:none; cursor:pointer;">☆</button>
+        </div>
+        <textarea id="detail-review-body" rows="3" placeholder="Write a review…" style="width:100%; background:var(--bg); border:1px solid var(--border); color:var(--text-main); padding:8px 10px; font-size:12px; border-radius:var(--radius-sm); box-sizing:border-box; resize:vertical;"></textarea>
+        <button class="btn" style="font-size:12px; margin-top:6px;" onclick="submitDetailReview()">Submit Review</button>
+      </div>
+
+      <!-- Reviews list -->
+      <div id="detail-reviews-section">
+        <div style="font-size:11px; color:var(--text-dark); margin-bottom:10px; text-transform:uppercase; letter-spacing:.05em;">Reviews</div>
+        <div id="detail-reviews-list"></div>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- MODAL: View Plugin Code -->
+  <div id="modal-plugin-code" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,.75); z-index:1500; align-items:center; justify-content:center;">
+    <div class="card" style="width:100%; max-width:640px; margin:0 16px; max-height:85vh; display:flex; flex-direction:column;">
+      <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:16px; flex-shrink:0;">
+        <div>
+          <h3 style="margin:0; font-size:14px; color:var(--text-main);" id="code-modal-title"></h3>
+          <div style="font-size:11px; color:var(--text-dark); font-family:var(--font-mono); margin-top:4px;" id="code-modal-meta"></div>
+        </div>
+        <button onclick="closePluginCodeModal()" style="background:none; border:none; color:var(--text-muted); cursor:pointer; font-size:18px;">✕</button>
+      </div>
+      <pre id="code-modal-content" style="flex:1; overflow:auto; margin:0; font-size:11px; line-height:1.6; border:1px solid var(--border); border-radius:var(--radius-sm); padding:12px; background:var(--bg);"></pre>
+    </div>
+  </div>
+
+  <!-- MODAL: Plugin Update Diff -->
+  <div id="modal-plugin-diff" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,.75); z-index:1500; align-items:center; justify-content:center;">
+    <div class="card" style="width:100%; max-width:640px; margin:0 16px; max-height:85vh; display:flex; flex-direction:column;">
+      <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:16px; flex-shrink:0;">
+        <div>
+          <h3 style="margin:0; font-size:14px; color:var(--text-main);" id="diff-modal-title">Plugin updated</h3>
+          <div style="font-size:11px; color:var(--text-dark); font-family:var(--font-mono); margin-top:4px;" id="diff-modal-version"></div>
+        </div>
+        <button onclick="closePluginDiffModal()" style="background:none; border:none; color:var(--text-muted); cursor:pointer; font-size:18px;">✕</button>
+      </div>
+      <div style="font-size:11px; color:var(--text-dark); font-family:var(--font-mono); margin-bottom:10px; flex-shrink:0;">
+        <span style="background:#2a1f1f; color:#f87171; padding:2px 6px; border-radius:3px; margin-right:8px;">− removed</span>
+        <span style="background:#1a2a1f; color:#4ade80; padding:2px 6px; border-radius:3px;">+ added</span>
+      </div>
+      <pre id="diff-modal-content" style="flex:1; overflow:auto; margin:0; font-size:11px; line-height:1.6; border:1px solid var(--border); border-radius:var(--radius-sm); padding:12px; background:var(--bg);"></pre>
+      <div style="display:flex; gap:8px; justify-content:flex-end; margin-top:16px; flex-shrink:0;">
+        <button class="btn" style="font-size:12px; color:var(--text-dark);" onclick="closePluginDiffModal()">Ignore</button>
+        <button class="btn" style="font-size:12px;" onclick="acceptPluginUpdateFromModal()">Update</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="/static/js/app.js?v=3"></script>
+  <script>
+    document.addEventListener('keydown', (e) => {
+      // Don't trigger if user is typing in an input
+      if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
+
+      const key = e.key.toLowerCase();
+      if (key === 'h') {
+        window.location.href = '/auth/github';
+      } else if (key === 'l') {
+        window.location.href = '/auth/gitlab';
+      }
+    });
+  </script>
+</body>
+
+</html>

@@ -1,0 +1,5 @@
+build:
+  command: apt-get update && apt-get install -y patch && cargo build --release
+
+run:
+  command: ./target/release/codetrackr
