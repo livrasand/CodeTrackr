@@ -7,6 +7,7 @@ use serde::Deserialize;
 use serde_json::json;
 use uuid::Uuid;
 
+use chrono::Datelike;
 use crate::AppState;
 
 #[derive(Deserialize)]
@@ -24,7 +25,7 @@ pub async fn get_global(
     let offset = q.offset.unwrap_or(0);
     let week_key = format!("lb:week:{}", chrono::Utc::now().format("%Y-W%W"));
 
-    let entries: Vec<(String, f64)> = if let Ok(mut guard) = state.redis.get_conn().await {
+    let mut entries: Vec<(String, f64)> = if let Ok(mut guard) = state.redis.get_conn().await {
         if let Some(conn) = guard.as_mut() {
             redis::cmd("ZREVRANGEBYSCORE")
                 .arg(&week_key)
@@ -40,17 +41,49 @@ pub async fn get_global(
         } else { vec![] }
     } else { vec![] };
 
+    // Fallback to DB when Redis has no data for this week
+    if entries.is_empty() {
+        let now = chrono::Utc::now();
+        let week_start = now - chrono::Duration::days(now.weekday().num_days_from_monday() as i64);
+        let week_start = week_start.date_naive().and_hms_opt(0, 0, 0).unwrap();
+        let rows = sqlx::query(
+            r#"SELECT user_id::text, COALESCE(SUM(duration_seconds), 0)::float8 AS seconds
+               FROM heartbeats
+               WHERE recorded_at >= $1
+               GROUP BY user_id
+               ORDER BY seconds DESC
+               LIMIT $2 OFFSET $3"#
+        )
+        .bind(week_start)
+        .bind(limit)
+        .bind(offset)
+        .fetch_all(&state.db.pool)
+        .await
+        .unwrap_or_default();
+
+        use sqlx::Row;
+        entries = rows.iter()
+            .map(|r| (r.get::<String, _>("user_id"), r.get::<f64, _>("seconds")))
+            .collect();
+    }
+
     let mut leaderboard = Vec::new();
     for (i, (user_id_str, score)) in entries.iter().enumerate() {
         if let Ok(uid) = user_id_str.parse::<Uuid>() {
-            if let Ok(user) = sqlx::query_as::<_, crate::models::User>(
-                "SELECT * FROM users WHERE id = $1 AND is_public = true"
+            let row = sqlx::query(
+                "SELECT id, username, display_name, avatar_url, country FROM users WHERE id = $1 AND is_public = true"
             )
             .bind(uid)
-            .fetch_one(&state.db.pool)
-            .await {
+            .fetch_optional(&state.db.pool)
+            .await
+            .ok()
+            .flatten();
+
+            if let Some(user) = row {
+                use sqlx::Row;
+                let user_country: Option<String> = user.get("country");
                 if let Some(ref country_filter) = q.country {
-                    if user.country.as_deref() != Some(country_filter.as_str()) {
+                    if user_country.as_deref() != Some(country_filter.as_str()) {
                         continue;
                     }
                 }
@@ -71,11 +104,11 @@ pub async fn get_global(
 
                 leaderboard.push(json!({
                     "rank": offset + i as i64 + 1,
-                    "user_id": user.id,
-                    "username": user.username,
-                    "display_name": user.display_name,
-                    "avatar_url": user.avatar_url,
-                    "country": user.country,
+                    "user_id": user.get::<Uuid, _>("id"),
+                    "username": user.get::<String, _>("username"),
+                    "display_name": user.get::<Option<String>, _>("display_name"),
+                    "avatar_url": user.get::<Option<String>, _>("avatar_url"),
+                    "country": user_country,
                     "seconds": *score as i64,
                     "top_language": top_language,
                     "top_editor": top_editor,
@@ -120,14 +153,20 @@ pub async fn get_by_language(
     let mut leaderboard = Vec::new();
     for (i, (user_id_str, score)) in entries.iter().enumerate() {
         if let Ok(uid) = user_id_str.parse::<Uuid>() {
-            if let Ok(user) = sqlx::query_as::<_, crate::models::User>(
-                "SELECT * FROM users WHERE id = $1 AND is_public = true"
+            let row = sqlx::query(
+                "SELECT id, username, display_name, avatar_url, country FROM users WHERE id = $1 AND is_public = true"
             )
             .bind(uid)
-            .fetch_one(&state.db.pool)
-            .await {
+            .fetch_optional(&state.db.pool)
+            .await
+            .ok()
+            .flatten();
+
+            if let Some(user) = row {
+                use sqlx::Row;
+                let user_country: Option<String> = user.get("country");
                 if let Some(ref country_filter) = q.country {
-                    if user.country.as_deref() != Some(country_filter.as_str()) {
+                    if user_country.as_deref() != Some(country_filter.as_str()) {
                         continue;
                     }
                 }
@@ -143,10 +182,10 @@ pub async fn get_by_language(
 
                 leaderboard.push(json!({
                     "rank": offset + i as i64 + 1,
-                    "username": user.username,
-                    "display_name": user.display_name,
-                    "avatar_url": user.avatar_url,
-                    "country": user.country,
+                    "username": user.get::<String, _>("username"),
+                    "display_name": user.get::<Option<String>, _>("display_name"),
+                    "avatar_url": user.get::<Option<String>, _>("avatar_url"),
+                    "country": user_country,
                     "seconds": *score as i64,
                     "language": lang,
                     "top_language": lang,

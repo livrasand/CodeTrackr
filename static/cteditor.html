@@ -357,7 +357,6 @@
   <a href="/" class="editor-topbar-logo">CodeTrackr</a>
   <div class="editor-topbar-sep"></div>
   <span class="editor-topbar-title">Plugin Editor</span>
-  <a href="/docs" class="editor-topbar-title" style="text-decoration:none;" title="Documentation">Docs</a>
   <div class="editor-topbar-actions">
     <div class="topbar-user" id="topbarUser" style="display:none">
       <img id="topbarAvatar" src="" alt="">
@@ -423,7 +422,7 @@
       </div>
       <div class="meta-field">
         <label class="meta-label" for="metaRepository">Repository URL</label>
-        <input class="meta-input" id="metaRepository" type="url" placeholder="https://github.com/..." autocomplete="off">
+        <input class="meta-input" id="metaRepository" type="text" placeholder="https://github.com/..." autocomplete="off">
       </div>
       <div class="meta-field">
         <label class="meta-label" for="metaWidgetType">Widget Type</label>
@@ -574,7 +573,10 @@ function loadTemplate() {
 function clearEditor() {
   cm.setValue('');
   document.getElementById('output').innerHTML = '<div class="out-idle">// Run your plugin to see output here.</div>';
+  document.getElementById('widget-output').innerHTML = '';
   document.getElementById('statusBadge').innerHTML = '';
+  setMeta({ name: '', display_name: '', version: '', icon: '', description: '', repository: '', widget_type: 'counter' });
+  setPublishStatus('', '');
 }
 
 function clearOutput() {

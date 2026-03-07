@@ -8,6 +8,7 @@
   <meta name="description" content="Minimalist code time tracking for developers." />
   <link rel="icon" type="image/png" href="/static/images/logo.png" />
   <link rel="stylesheet" href="/static/css/main.css" />
+  <script src="https://cdn.jsdelivr.net/npm/sortablejs@1.15.0/Sortable.min.js"></script>
 </head>
 
 <body>
@@ -250,7 +251,7 @@
       </div>
 
       <!-- Plugin Panels (installed) -->
-      <div id="dash-plugins" style="display:flex; flex-wrap:wrap; gap:16px; margin-bottom:32px;"></div>
+      <div id="dash-plugins" style="display:grid; gap:16px; margin-bottom:32px;"></div>
 
       <!-- PLUGIN STORE -->
       <div id="plugin-store" style="margin-bottom:32px;">
@@ -529,8 +530,8 @@
           <input id="pub-display-name" type="text" placeholder="My Plugin" style="width:100%; background:var(--bg-card); border:1px solid var(--border); color:var(--text-main); padding:8px 10px; font-size:13px; border-radius:4px; box-sizing:border-box;">
         </div>
         <div>
-          <label style="font-size:11px; color:var(--text-dark); display:block; margin-bottom:4px;">Description</label>
-          <textarea id="pub-description" rows="2" placeholder="What does this plugin do?" style="width:100%; background:var(--bg-card); border:1px solid var(--border); color:var(--text-main); padding:8px 10px; font-size:13px; border-radius:4px; box-sizing:border-box; resize:vertical;"></textarea>
+          <label style="font-size:11px; color:var(--text-dark); display:block; margin-bottom:4px;">Description <span id="pub-desc-count" style="color:var(--text-dark);">(0/90)</span></label>
+          <textarea id="pub-description" rows="2" maxlength="90" placeholder="What does this plugin do?" oninput="document.getElementById('pub-desc-count').textContent='('+this.value.length+'/90)'" style="width:100%; background:var(--bg-card); border:1px solid var(--border); color:var(--text-main); padding:8px 10px; font-size:13px; border-radius:4px; box-sizing:border-box; resize:vertical;"></textarea>
         </div>
         <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px;">
           <div>
@@ -700,7 +701,7 @@
     </div>
   </div>
 
-  <script src="/static/js/app.js?v=3"></script>
+  <script src="/static/js/app.js?v=4"></script>
   <script>
     document.addEventListener('keydown', (e) => {
       // Don't trigger if user is typing in an input

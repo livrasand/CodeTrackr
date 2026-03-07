@@ -43,47 +43,89 @@ impl RedisPool {
 pub mod ws_handler {
     use axum::{
         extract::{State, WebSocketUpgrade, Query, ws::{WebSocket, Message}},
-        response::{Response, IntoResponse},
+        response::{Response, IntoResponse, Json},
         http::StatusCode,
     };
     use serde::Deserialize;
-    use crate::AppState;
+    use serde_json::json;
+    use std::collections::HashMap;
+    use std::time::{Instant, Duration};
+    use crate::{AppState, auth::AuthenticatedUser};
 
     // In-process broadcast channel for real-time updates
     use once_cell::sync::Lazy;
-    use tokio::sync::broadcast;
+    use tokio::sync::{broadcast, Mutex};
 
     pub static BROADCAST: Lazy<broadcast::Sender<String>> = Lazy::new(|| {
         broadcast::channel::<String>(1024).0
     });
 
+    /// Tickets WS en memoria: ticket -> (user_id, expiry)
+    /// No necesitan Redis — son locales al proceso y de vida muy corta (30s).
+    static WS_TICKETS: Lazy<Mutex<HashMap<String, (String, Instant)>>> =
+        Lazy::new(|| Mutex::new(HashMap::new()));
+
+    const TICKET_TTL: Duration = Duration::from_secs(30);
+
     pub fn publish(msg: String) {
         let _ = BROADCAST.send(msg);
     }
 
+    /// POST /api/v1/ws-ticket
+    /// Genera un ticket de un solo uso (TTL 30s) para autenticar la conexión WS
+    /// sin exponer el JWT en la query string ni en los logs del servidor.
+    pub async fn create_ws_ticket(
+        AuthenticatedUser(user): AuthenticatedUser,
+        State(_state): State<AppState>,
+    ) -> Json<serde_json::Value> {
+        use rand::Rng;
+        let ticket: String = rand::thread_rng()
+            .sample_iter(&rand::distributions::Alphanumeric)
+            .take(48)
+            .map(char::from)
+            .collect();
+
+        let expiry = Instant::now() + TICKET_TTL;
+        {
+            let mut map = WS_TICKETS.lock().await;
+            // Limpiar tickets expirados antes de insertar
+            map.retain(|_, (_, exp)| *exp > Instant::now());
+            map.insert(ticket.clone(), (user.id.to_string(), expiry));
+        }
+
+        Json(json!({"ticket": ticket}))
+    }
+
     #[derive(Deserialize)]
     pub struct WsQuery {
-        pub token: Option<String>,
+        pub ticket: Option<String>,
     }
 
     pub async fn ws_handler(
         ws: WebSocketUpgrade,
         Query(params): Query<WsQuery>,
-        State(state): State<AppState>,
+        State(_state): State<AppState>,
     ) -> Response {
-        // Fix #4: Require valid JWT to establish WebSocket connection
-        let token = match params.token {
+        let ticket = match params.ticket {
             Some(t) if !t.is_empty() => t,
-            _ => {
-                return (StatusCode::UNAUTHORIZED, "Missing token").into_response();
+            _ => return (StatusCode::UNAUTHORIZED, "Missing ticket").into_response(),
+        };
+
+        // Consumir ticket (single-use) del store en memoria
+        let valid = {
+            let mut map = WS_TICKETS.lock().await;
+            if let Some((_, expiry)) = map.remove(&ticket) {
+                expiry > Instant::now()
+            } else {
+                false
             }
         };
 
-        if crate::auth::verify_jwt(&token, &state.config.jwt_secret).is_err() {
-            return (StatusCode::UNAUTHORIZED, "Invalid token").into_response();
+        if valid {
+            ws.on_upgrade(handle_socket)
+        } else {
+            (StatusCode::UNAUTHORIZED, "Invalid or expired ticket").into_response()
         }
-
-        ws.on_upgrade(handle_socket)
     }
 
     async fn handle_socket(mut socket: WebSocket) {

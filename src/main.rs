@@ -194,12 +194,15 @@ fn api_routes(state: AppState, plugin_router: Router<AppState>) -> Router<AppSta
         .route("/cteditor/run", post(api::cteditor::run_plugin))
         // Plugin RPC — user-defined endpoints inside store plugin scripts
         .route("/plugins/:name/rpc/:handler", post(api::plugin_rpc::rpc_call))
+        // WebSocket ticket (single-use, TTL 30s — evita exponer JWT en query string)
+        .route("/ws-ticket", post(realtime::ws_handler::create_ws_ticket))
         // Health
         .route("/health", get(api::health::health_check))
         .route("/kaithheathcheck", get(api::health::health_check))
         // Plugin system
         .route("/plugins", get(plugins::list_plugins))
         .route("/plugins/panels", get(plugins::get_dashboard_manifests))
+        .route("/dashboard/order", post(api::dashboard::save_dashboard_order))
         .nest("/plugins", plugin_router)
         // Plugin store
         .route("/store", get(api::store::list_store_plugins))

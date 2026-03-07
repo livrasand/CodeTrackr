@@ -76,6 +76,21 @@ impl Database {
             .unwrap_or_else(|_| (String::from("unknown"),));
         tracing::info!("Server statement_timeout = {:?}", timeout.0);
 
+        // Ensure the migrations tracking table exists before querying it
+        sqlx::query(
+            r#"CREATE TABLE IF NOT EXISTS _sqlx_migrations (
+                version        BIGINT PRIMARY KEY,
+                description    TEXT NOT NULL,
+                installed_on   TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                success        BOOLEAN NOT NULL DEFAULT false,
+                checksum       BYTEA NOT NULL,
+                execution_time BIGINT NOT NULL DEFAULT 0
+            )"#
+        )
+        .execute(&self.pool)
+        .await
+        .map_err(|e| anyhow::anyhow!("Failed to create _sqlx_migrations table: {}", e))?;
+
         let mut migrator_base = sqlx::migrate!("./migrations");
         let migrator = migrator_base.set_ignore_missing(true);
 

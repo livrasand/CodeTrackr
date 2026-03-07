@@ -217,7 +217,9 @@ pub async fn get_dashboard_manifests(
                   p.version, p.script, i.accepted_version, i.accepted_script
            FROM plugin_store p
            JOIN installed_plugins i ON p.id = i.plugin_id
-           WHERE i.user_id = $1 AND p.is_banned = false AND p.is_published = true"#,
+           LEFT JOIN user_dashboard_order u ON u.user_id = $1 AND u.panel_name = p.name
+           WHERE i.user_id = $1 AND p.is_banned = false AND p.is_published = true
+           ORDER BY u.position ASC NULLS LAST, p.name ASC"#,
     )
     .bind(user.id)
     .fetch_all(&state.db.pool)

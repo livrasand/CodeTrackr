@@ -537,6 +537,22 @@ pre {
   transition: all var(--transition);
 }
 
+.panel-drag-ghost {
+  opacity: 0.4;
+  border: 1px dashed var(--border-focus) !important;
+}
+
+.sortable-fallback {
+  opacity: 0.9 !important;
+  box-shadow: 0 4px 24px rgba(0,0,0,0.4) !important;
+  pointer-events: none !important;
+  z-index: 9999 !important;
+}
+
+.panel-drag-handle:active {
+  cursor: grabbing;
+}
+
 .nav-user-pill:hover {
   border-color: var(--text-muted);
 }

@@ -452,17 +452,22 @@ async function loadPluginPanels() {
     container.innerHTML = '';
     if (!panels || panels.length === 0) return;
 
-    for (const panel of panels) {
+    const uniquePanels = panels.filter((p, i, arr) => arr.findIndex(x => x.panel === p.panel) === i);
+    for (const panel of uniquePanels) {
       const div = document.createElement('div');
-      div.className = 'plugin-panel';
+      div.className = 'plugin-panel card';
       div.style.width = '100%';
       div.id = `plugin-panel-${panel.panel}`;
+      div.setAttribute('data-panel-name', panel.panel);
       div.innerHTML = `
         <div style="display:flex; justify-content:space-between; align-items:flex-start;">
-          <h4 style="margin:0 0 8px;">${panel.title}</h4>
+          <div style="display:flex; align-items:center; gap:8px;">
+            <span class="panel-drag-handle" title="Drag to reorder" style="cursor:grab; color:var(--text-dark); font-size:14px; line-height:1; user-select:none;">⠿</span>
+            <h4 style="margin:0 0 0;">${panel.title}</h4>
+          </div>
           <button class="btn" style="padding:2px 8px; font-size:10px; color:var(--text-dark);" onclick="uninstallPlugin('${panel.plugin_id || panel.panel}', this)">✕</button>
         </div>
-        <div class="panel-val" id="pval-${panel.panel}"></div>
+        <div class="panel-val" id="pval-${panel.panel}" style="margin-top:8px;"></div>
       `;
       container.appendChild(div);
 
@@ -475,9 +480,15 @@ async function loadPluginPanels() {
         const acceptedScript = panel.accepted_script || '';
 
         if (!acceptedVersion) {
-          // First install — accept automatically and run
-          api(`/store/plugin/${panel.plugin_id}/accept`, { method: 'POST' }).catch(() => {});
-          if (latestScript && panelEl) runPluginScript(latestScript, panelEl, currentToken);
+          // First install — require manual review before running
+          showToast(
+            `${panel.title} — review script before activating`,
+            [{
+              label: 'Review & Activate',
+              onClick: () => openPluginDiffModal(panel.title, null, latestVersion, '', latestScript, panel.plugin_id)
+            }],
+            0
+          );
         } else if (acceptedVersion === latestVersion) {
           // Up to date — run accepted script
           if (acceptedScript && panelEl) runPluginScript(acceptedScript, panelEl, currentToken);
@@ -503,6 +514,22 @@ async function loadPluginPanels() {
     }
   } catch (e) {
     console.warn('Plugins error:', e);
+  }
+
+  // Initialize drag-and-drop for panel reordering
+  if (typeof Sortable !== 'undefined') {
+    new Sortable(container, {
+      animation: 150,
+      handle: '.panel-drag-handle',
+      ghostClass: 'panel-drag-ghost',
+      forceFallback: true,
+      fallbackClass: 'panel-drag-ghost',
+      onEnd: function(evt) {
+        if (evt.oldIndex === evt.newIndex) return;
+        const panelNames = Array.from(container.children).map(el => el.getAttribute('data-panel-name'));
+        api('/dashboard/order', { method: 'POST', body: JSON.stringify({ panel_names: panelNames }) });
+      }
+    });
   }
 }
 
@@ -560,12 +587,26 @@ function initKeyActions() {
 
 // ── WebSocket ─────────────────────────────────────────────────────────────────
 
-function connectWebSocket() {
-  const proto = location.protocol === 'https:' ? 'wss' : 'ws';
-  WS = new WebSocket(`${proto}://${location.host}/ws`);
+let _wsRetryDelay = 5000;
 
-  WS.onopen = () => console.info('🔌 WebSocket connected');
-  WS.onclose = () => setTimeout(connectWebSocket, 5000);
+async function connectWebSocket() {
+  if (!currentToken) return;
+
+  let ticket;
+  try {
+    const data = await api('/ws-ticket', { method: 'POST' });
+    ticket = data.ticket;
+  } catch (e) {
+    _wsRetryDelay = Math.min(_wsRetryDelay * 2, 60000);
+    setTimeout(connectWebSocket, _wsRetryDelay);
+    return;
+  }
+
+  const proto = location.protocol === 'https:' ? 'wss' : 'ws';
+  WS = new WebSocket(`${proto}://${location.host}/ws?ticket=${encodeURIComponent(ticket)}`);
+
+  WS.onopen = () => { console.info('🔌 WebSocket connected'); _wsRetryDelay = 5000; };
+  WS.onclose = () => { _wsRetryDelay = Math.min(_wsRetryDelay * 2, 60000); setTimeout(connectWebSocket, _wsRetryDelay); };
   WS.onerror = (e) => console.warn('WS error:', e);
 
   WS.onmessage = (event) => {

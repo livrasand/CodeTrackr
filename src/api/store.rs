@@ -113,6 +113,12 @@ pub async fn publish_plugin(
     let icon = body.icon.unwrap_or_else(|| "🔌".to_string());
     let widget_type = body.widget_type.unwrap_or_else(|| "counter".to_string());
 
+    if let Some(ref desc) = body.description {
+        if desc.chars().count() > 90 {
+            return Err((StatusCode::BAD_REQUEST, Json(json!({"error": "Description must be 90 characters or fewer"}))));
+        }
+    }
+
     let plugin = sqlx::query_as::<_, StorePlugin>(
         r#"INSERT INTO plugin_store
                (author_id, name, display_name, description, version, repository, icon, widget_type, api_endpoint, script, settings_schema)
@@ -128,7 +134,12 @@ pub async fn publish_plugin(
              script         = EXCLUDED.script,
              settings_schema = EXCLUDED.settings_schema,
              updated_at     = NOW()
-           RETURNING *"#
+           RETURNING id, author_id, name, display_name, description, version, repository,
+                     icon, widget_type, api_endpoint, script, settings_schema,
+                     is_published, is_banned, ban_reason, install_count,
+                     COALESCE(avg_rating, 0)::float8 AS avg_rating,
+                     COALESCE(rating_count, 0) AS rating_count,
+                     created_at"#
     )
     .bind(user.id)
     .bind(&body.name)
