@@ -45,6 +45,25 @@ pub async fn create_heartbeat(
     .await
     .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e.to_string()}))))?;
 
+    // Ejecutar hooks de lifecycle para 'on_heartbeat'
+    let event_data = json!({
+        "user_id": user.id,
+        "project": body.project,
+        "file": body.file,
+        "language": body.language,
+        "branch": body.branch,
+        "commit": body.commit,
+        "workspace_root": body.workspace_root,
+        "package_path": body.package_path,
+        "duration_seconds": duration,
+        "is_write": body.is_write.unwrap_or(false),
+        "editor": body.editor,
+        "os": body.os,
+        "machine": body.machine,
+        "recorded_at": recorded_at
+    });
+    crate::api::plugin_rpc::execute_lifecycle_hooks(&user.id, "on_heartbeat", event_data, &state).await;
+
     // Publish real-time update via broadcast channel (forwarded by Redis subscriber to WS clients)
     let update = json!({
         "type": "heartbeat",
@@ -62,23 +81,21 @@ pub async fn create_heartbeat(
             format!("lb:lang:{}:{}", lang.to_lowercase(), chrono::Utc::now().format("%Y-W%W"))
         });
 
-        if let Ok(mut guard) = state.redis.get_conn().await {
-            if let Some(conn) = guard.as_mut() {
+        if let Ok(mut conn) = state.redis.get_conn().await {
+            let _: Result<(), _> = redis::cmd("ZINCRBY")
+                .arg(&week_key)
+                .arg(duration as i64)
+                .arg(user.id.to_string())
+                .query_async(&mut conn)
+                .await;
+
+            if let Some(lk) = lang_key {
                 let _: Result<(), _> = redis::cmd("ZINCRBY")
-                    .arg(&week_key)
+                    .arg(&lk)
                     .arg(duration as i64)
                     .arg(user.id.to_string())
-                    .query_async(conn)
+                    .query_async(&mut conn)
                     .await;
-
-                if let Some(lk) = lang_key {
-                    let _: Result<(), _> = redis::cmd("ZINCRBY")
-                        .arg(&lk)
-                        .arg(duration as i64)
-                        .arg(user.id.to_string())
-                        .query_async(conn)
-                        .await;
-                }
             }
         }
     }
@@ -93,12 +110,12 @@ pub async fn create_heartbeats_bulk(
 ) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
     let mut inserted = 0usize;
 
-    for body in bodies {
+    for body in &bodies {
         let recorded_at = body.time
             .and_then(|t| DateTime::from_timestamp(t as i64, 0))
             .unwrap_or_else(Utc::now);
 
-        let _ = sqlx::query(
+        if let Ok(result) = sqlx::query(
             r#"INSERT INTO heartbeats
                (id, user_id, project, file, language, branch, commit, workspace_root, package_path,
                 duration_seconds, is_write, editor, os, machine, recorded_at, created_at)
@@ -121,10 +138,21 @@ pub async fn create_heartbeats_bulk(
         .bind(&body.machine)
         .bind(recorded_at)
         .execute(&state.db.pool)
-        .await;
-
-        inserted += 1;
+        .await
+        {
+            if result.rows_affected() > 0 {
+                inserted += 1;
+            }
+        }
     }
+
+    // Ejecutar hooks de lifecycle para 'on_heartbeats_bulk'
+    let event_data = json!({
+        "user_id": user.id,
+        "count": inserted,
+        "total_requested": bodies.len()
+    });
+    crate::api::plugin_rpc::execute_lifecycle_hooks(&user.id, "on_heartbeats_bulk", event_data, &state).await;
 
     Ok(Json(json!({"status": "ok", "inserted": inserted})))
 }

@@ -72,7 +72,9 @@ async function initAuth() {
 
   if (isLoggedIn()) {
     await updateUserUI();
-    await loadDashboard();
+    if ($('dashboard')) {
+      await loadDashboard();
+    }
   }
 }
 
@@ -130,7 +132,7 @@ function showLanding() {
 
 function showDashboard() {
   // Hide landing sections
-  ['hero', 'stats', 'leaderboard', 'features', 'plugins', 'pricing', 'about', 'footer', 'nav', 'public-profile'].forEach(id => {
+  ['hero', 'stats', 'leaderboard', 'features', 'build', 'plugins', 'pricing', 'about', 'footer', 'nav', 'public-profile'].forEach(id => {
     const el = $(id);
     if (el) el.classList.add('hidden');
   });
@@ -169,6 +171,18 @@ function closePublishModal() {
   if (errEl) errEl.style.display = 'none';
 }
 
+function onPubPluginTypeChange(type) {
+  const isLifecycle = type === 'lifecycle';
+  const widgetRow = $('pub-widget-type-row');
+  const scriptRow = $('pub-script-row');
+  const scriptHint = $('pub-script-hint');
+  if (widgetRow) widgetRow.style.display = isLifecycle ? 'none' : '';
+  if (scriptRow) scriptRow.style.display = isLifecycle ? 'none' : '';
+  if (scriptHint) scriptHint.textContent = isLifecycle
+    ? '— runs server-side on lifecycle events (on_heartbeat, on_tick, on_install…)'
+    : "— runs in the user's browser. Use container (DOM element) and token (Bearer token) as variables.";
+}
+
 async function submitPublishPlugin() {
   const name = $('pub-name')?.value.trim();
   const displayName = $('pub-display-name')?.value.trim();
@@ -187,6 +201,9 @@ async function submitPublishPlugin() {
   if (btn) { btn.textContent = 'Publishing...'; btn.disabled = true; }
   if (errEl) errEl.style.display = 'none';
 
+  const pluginType = $('pub-plugin-type')?.value || 'widget';
+  const isLifecycle = pluginType === 'lifecycle';
+
   try {
     await api('/store/publish', {
       method: 'POST',
@@ -197,12 +214,15 @@ async function submitPublishPlugin() {
         version: $('pub-version')?.value.trim() || '0.1.0',
         icon: $('pub-icon')?.value.trim() || '🔌',
         repository: $('pub-repo')?.value.trim() || null,
-        widget_type: $('pub-widget-type')?.value || 'counter',
+        plugin_type: pluginType,
+        widget_type: isLifecycle ? null : ($('pub-widget-type')?.value || 'counter'),
         script: $('pub-script')?.value.trim() || null,
       }),
     });
     closePublishModal();
     loadPluginStore();
+    const pluginTypeEl2 = $('pub-plugin-type');
+    if (pluginTypeEl2) { pluginTypeEl2.value = 'widget'; onPubPluginTypeChange('widget'); }
     ['pub-name','pub-display-name','pub-description','pub-version','pub-icon','pub-repo','pub-script'].forEach(id => {
       const el = $(id); if (el) el.value = '';
     });
@@ -319,6 +339,9 @@ async function loadDashboard() {
     loadDashSummary(),
     loadDashDaily(),
     loadDashLanguages(),
+    loadDashProjects(),
+    loadDashWorkTypes(),
+    loadDashSessions(),
     loadApiKey(),
     loadPluginPanels(),
     loadAdminPanelIfNeeded(),
@@ -407,6 +430,100 @@ async function loadDashLanguages() {
     }
   } catch (e) {
     console.warn('Language error:', e);
+  }
+}
+
+async function loadDashProjects() {
+  try {
+    const { projects } = await api('/stats/projects?range=7d');
+    const container = $('dash-projects-list');
+    if (!container || !projects || projects.length === 0) return;
+    const maxSec = Math.max(...projects.map(p => p.seconds), 1);
+    container.innerHTML = projects.slice(0, 8).map(p => {
+      const pct = Math.round((p.seconds / maxSec) * 100);
+      return `
+        <div style="margin-bottom:8px;">
+          <div style="display:flex; justify-content:space-between; font-size:11px; color:var(--text-dark); margin-bottom:3px;">
+            <span style="font-family:var(--font-mono);">${p.project}</span><span>${fmt.seconds(p.seconds)}</span>
+          </div>
+          <div style="background:var(--border); border-radius:2px; height:4px;">
+            <div style="background:var(--text-dark); width:${pct}%; height:100%; border-radius:2px;"></div>
+          </div>
+        </div>`;
+    }).join('');
+  } catch (e) {
+    console.warn('Projects error:', e);
+  }
+}
+
+async function loadDashWorkTypes() {
+  const container = $('dash-work-types-bars');
+  if (!container) return;
+  try {
+    const { work_types, total_seconds } = await api('/stats/work-types?range=7d');
+    if (!work_types || total_seconds === 0) {
+      container.innerHTML = `<span style="font-size:12px; color:var(--text-muted);">No data yet.</span>`;
+      return;
+    }
+    const workColors = {
+      'Writing code':    'var(--accent)',
+      'Debugging':       '#e05252',
+      'Reading code':    '#5b9bd5',
+      'Config / tooling':'var(--text-dark)',
+    };
+    const sorted = [...work_types].sort((a, b) => b.seconds - a.seconds);
+    container.innerHTML = sorted.map(wt => {
+      const pct = wt.percentage.toFixed(1);
+      const color = workColors[wt.type] || 'var(--text-dark)';
+      return `
+        <div style="margin-bottom:10px;">
+          <div style="display:flex; justify-content:space-between; font-size:11px; color:var(--text-dark); margin-bottom:3px;">
+            <span>${wt.type}</span>
+            <span>${pct}% &nbsp;<span style="color:var(--text-muted);">${fmt.seconds(wt.seconds)}</span></span>
+          </div>
+          <div style="background:var(--border); border-radius:2px; height:5px;">
+            <div style="background:${color}; width:${pct}%; height:100%; border-radius:2px; transition:width .4s;"></div>
+          </div>
+        </div>`;
+    }).join('');
+  } catch (e) {
+    console.warn('Work types error:', e);
+  }
+}
+
+async function loadDashSessions() {
+  const container = $('dash-sessions-list');
+  const countEl = $('dash-sessions-count');
+  if (!container) return;
+  try {
+    const { sessions, total_sessions } = await api('/stats/sessions?range=7d');
+    if (countEl) countEl.textContent = total_sessions ? `${total_sessions} total` : '';
+    if (!sessions || sessions.length === 0) {
+      container.innerHTML = `<span style="font-size:12px; color:var(--text-muted);">No sessions yet.</span>`;
+      return;
+    }
+    const workIcon = { 'writing': '✏', 'debugging': '🐛', 'reading': '👁', 'config': '⚙' };
+    container.innerHTML = sessions.slice(0, 6).map(s => {
+      const start = new Date(s.start);
+      const timeStr = start.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
+      const dateStr = start.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+      const icon = workIcon[s.dominant_work_type] || '💻';
+      return `
+        <div style="display:flex; align-items:center; gap:10px; padding:6px 0; border-bottom:1px solid var(--border);">
+          <span style="font-size:14px; flex-shrink:0;">${icon}</span>
+          <div style="flex:1; min-width:0;">
+            <div style="display:flex; justify-content:space-between; font-size:11px;">
+              <span style="font-family:var(--font-mono); color:var(--text-main); overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${s.project}</span>
+              <span style="color:var(--text-dark); flex-shrink:0; margin-left:8px;">${fmt.seconds(s.duration_seconds)}</span>
+            </div>
+            <div style="font-size:10px; color:var(--text-muted); margin-top:2px;">
+              ${dateStr} ${timeStr}${s.top_language ? ' · ' + s.top_language : ''}${s.dominant_work_type ? ' · ' + s.dominant_work_type : ''}
+            </div>
+          </div>
+        </div>`;
+    }).join('');
+  } catch (e) {
+    console.warn('Sessions error:', e);
   }
 }
 
@@ -588,15 +705,21 @@ function initKeyActions() {
 // ── WebSocket ─────────────────────────────────────────────────────────────────
 
 let _wsRetryDelay = 5000;
+let _wsRetryCount = 0;
+const _wsMaxRetries = 5;
 
 async function connectWebSocket() {
   if (!currentToken) return;
+  if (_wsRetryCount >= _wsMaxRetries) return;
+  const dash = $('dashboard');
+  if (!dash || dash.classList.contains('hidden')) return;
 
   let ticket;
   try {
     const data = await api('/ws-ticket', { method: 'POST' });
     ticket = data.ticket;
   } catch (e) {
+    _wsRetryCount++;
     _wsRetryDelay = Math.min(_wsRetryDelay * 2, 60000);
     setTimeout(connectWebSocket, _wsRetryDelay);
     return;
@@ -605,9 +728,16 @@ async function connectWebSocket() {
   const proto = location.protocol === 'https:' ? 'wss' : 'ws';
   WS = new WebSocket(`${proto}://${location.host}/ws?ticket=${encodeURIComponent(ticket)}`);
 
-  WS.onopen = () => { console.info('🔌 WebSocket connected'); _wsRetryDelay = 5000; };
-  WS.onclose = () => { _wsRetryDelay = Math.min(_wsRetryDelay * 2, 60000); setTimeout(connectWebSocket, _wsRetryDelay); };
-  WS.onerror = (e) => console.warn('WS error:', e);
+  WS.onopen = () => { _wsRetryDelay = 5000; _wsRetryCount = 0; };
+  WS.onclose = (e) => {
+    if (e.code === 1000) return;
+    // Closed due to tab suspension / device sleep — reconnect when page becomes visible again
+    if (document.hidden) return;
+    _wsRetryCount++;
+    _wsRetryDelay = Math.min(_wsRetryDelay * 2, 60000);
+    if (_wsRetryCount < _wsMaxRetries) setTimeout(connectWebSocket, _wsRetryDelay);
+  };
+  WS.onerror = () => {};
 
   WS.onmessage = (event) => {
     try {
@@ -708,55 +838,6 @@ async function injectLanguageTabs() {
     });
   } catch (e) {
     // No data yet, no tabs injected
-  }
-}
-
-async function loadLeaderboard(tab) {
-  const loadingEl = $('lb-loading');
-  const rowsEl = $('lb-rows');
-  if (!rowsEl) return;
-
-  // Show shimmer placeholders
-  rowsEl.innerHTML = Array.from({ length: 5 }, () => `
-    <tr>
-      <td colspan="5" style="padding: 16px; opacity: 0.5;">Loading fast stats...</td>
-    </tr>
-  `).join('');
-
-  if (loadingEl) loadingEl.style.display = 'none';
-
-  try {
-    let endpoint = tab === 'global'
-      ? '/leaderboards/global?limit=10'
-      : `/leaderboards/language/${tab}?limit=10`;
-
-    const data = await api(endpoint);
-    const entries = data.leaderboard || [];
-
-    if (entries.length === 0) {
-      rowsEl.innerHTML = `<tr><td colspan="5" style="text-align:center; padding: 24px; color: var(--text-muted);">No data yet this week. Start coding!</td></tr>`;
-      return;
-    }
-
-    rowsEl.innerHTML = entries.map((e) => {
-      const username = e.username || '';
-      let displayName = username || 'Unknown';
-      if (displayName.length > 12) displayName = displayName.substring(0, 10) + '...';
-      const nameCell = username
-        ? `<a href="javascript:void(0)" onclick="openPublicProfile('${username}')" style="color:var(--text-main); text-decoration:underline; cursor:pointer;">${displayName}</a>`
-        : displayName;
-      return `
-        <tr>
-          <td class="td-main">${nameCell}</td>
-          <td class="td-main">${fmt.seconds(e.seconds)}</td>
-          <td>${e.top_language || e.language || '—'}</td>
-          <td>${e.top_editor || '—'}</td>
-          <td>${e.top_os || '—'}</td>
-        </tr>
-      `;
-    }).join('');
-  } catch (e) {
-    rowsEl.innerHTML = `<tr><td colspan="5" style="text-align:center; padding: 24px; color: var(--text-muted);">Leaderboard loading failed.</td></tr>`;
   }
 }
 
@@ -942,17 +1023,6 @@ function initNav() {
     });
   }
 
-  // Scroll effect
-  window.addEventListener('scroll', () => {
-    const nav = $('nav');
-    if (nav) {
-      if (window.scrollY > 20) {
-        nav.style.background = 'rgba(5,5,7,.95)';
-      } else {
-        nav.style.background = 'rgba(5,5,7,.8)';
-      }
-    }
-  });
 
   // Smooth close on link click
   document.querySelectorAll('.nav-link').forEach(link => {
@@ -967,7 +1037,9 @@ function initNav() {
 document.addEventListener('DOMContentLoaded', async () => {
   await initAuth();
   initNav();
-  initLandingPage();
+  if (window.location.pathname === '/' || window.location.pathname === '') {
+    initLandingPage();
+  }
 });
 
 window.addEventListener('popstate', async () => {
@@ -1502,6 +1574,7 @@ window.regenerateApiKey = regenerateApiKey;
 window.openPublishModal = openPublishModal;
 window.closePublishModal = closePublishModal;
 window.submitPublishPlugin = submitPublishPlugin;
+window.onPubPluginTypeChange = onPubPluginTypeChange;
 window.openReportModal = openReportModal;
 window.closeReportModal = closeReportModal;
 window.submitReport = submitReport;
@@ -1547,6 +1620,7 @@ async function loadProfileSettings() {
     'ptog-languages': 'profile_show_languages',
     'ptog-projects': 'profile_show_projects',
     'ptog-plugins': 'profile_show_plugins',
+    'ptog-hire': 'available_for_hire',
   };
   for (const [elId, field] of Object.entries(togMap)) {
     const el = $(elId);
@@ -1566,6 +1640,7 @@ async function saveProfileSettings() {
       profile_show_languages: $('ptog-languages')?.checked,
       profile_show_projects: $('ptog-projects')?.checked,
       profile_show_plugins: $('ptog-plugins')?.checked,
+      available_for_hire: $('ptog-hire')?.checked,
     };
     await api('/user/profile/update', { method: 'POST', body: JSON.stringify(body) });
     currentUser = { ...currentUser, ...body };
@@ -1601,7 +1676,7 @@ async function openPublicProfile(username) {
   }
 
   // Hide everything except pp section
-  ['hero', 'stats', 'leaderboard', 'features', 'plugins', 'pricing', 'about', 'footer', 'dashboard'].forEach(id => {
+  ['hero', 'stats', 'leaderboard', 'features', 'build', 'plugins', 'pricing', 'about', 'footer', 'dashboard'].forEach(id => {
     const el = $(id);
     if (el) el.classList.add('hidden');
   });
@@ -1750,6 +1825,10 @@ async function openPublicProfile(username) {
       }
     }
 
+    // Available for hire
+    const hireSection = $('pp-hire-section');
+    if (hireSection) hireSection.style.display = p.available_for_hire ? '' : 'none';
+
   } catch (e) {
     console.warn('Public profile error:', e);
     const ppSection2 = $('public-profile');
@@ -1793,6 +1872,123 @@ async function toggleFollow(username, doFollow, btn) {
   }
 }
 
+// ── Available for Hire — Contact Modal ────────────────────────────────────────
+
+let _contactTargetUsername = null;
+
+function openContactModal() {
+  const ppUnameEl = $('pp-username');
+  if (ppUnameEl) {
+    _contactTargetUsername = ppUnameEl.textContent.replace('@', '').trim();
+  }
+  const modal = $('hire-contact-modal');
+  if (!modal) return;
+  const nameEl = $('hire-contact-name');
+  const emailEl = $('hire-contact-email');
+  const msgEl = $('hire-contact-message');
+  const statusEl = $('hire-contact-status');
+  const submitBtn = $('hire-contact-submit');
+  if (nameEl) nameEl.value = '';
+  if (emailEl) emailEl.value = '';
+  if (msgEl) msgEl.value = '';
+  if (statusEl) { statusEl.style.display = 'none'; statusEl.textContent = ''; }
+  if (submitBtn) { submitBtn.disabled = false; submitBtn.textContent = 'Send'; }
+  modal.style.display = 'flex';
+}
+
+function closeContactModal() {
+  const modal = $('hire-contact-modal');
+  if (modal) modal.style.display = 'none';
+}
+
+async function submitContactDev() {
+  const submitBtn = $('hire-contact-submit');
+  const statusEl = $('hire-contact-status');
+  const name = $('hire-contact-name')?.value.trim();
+  const email = $('hire-contact-email')?.value.trim();
+  const message = $('hire-contact-message')?.value.trim();
+
+  if (!name || !email || !message) {
+    if (statusEl) { statusEl.style.display = 'block'; statusEl.style.color = 'var(--text-muted)'; statusEl.textContent = 'Please fill in all fields.'; }
+    return;
+  }
+
+  if (!_contactTargetUsername) return;
+
+  if (submitBtn) { submitBtn.disabled = true; submitBtn.textContent = 'Sending…'; }
+
+  try {
+    await api(`/user/contact/${_contactTargetUsername}`, {
+      method: 'POST',
+      body: JSON.stringify({ name, email, message }),
+    });
+    if (statusEl) { statusEl.style.display = 'block'; statusEl.style.color = 'var(--accent)'; statusEl.textContent = 'Message sent successfully!'; }
+    if (submitBtn) submitBtn.textContent = 'Sent';
+    setTimeout(() => closeContactModal(), 2000);
+  } catch (e) {
+    if (statusEl) { statusEl.style.display = 'block'; statusEl.style.color = 'var(--text-muted)'; statusEl.textContent = 'Failed to send: ' + e.message; }
+    if (submitBtn) { submitBtn.disabled = false; submitBtn.textContent = 'Send'; }
+  }
+}
+
+function applyLeaderboardHireFilter(checkbox) {
+  loadLeaderboard(currentLbTab);
+}
+
+// ── Leaderboard (with hire filter support) ───────────────────────────────────
+
+async function loadLeaderboard(tab) {
+  const loadingEl = $('lb-loading');
+  const rowsEl = $('lb-rows');
+  if (!rowsEl) return;
+
+  rowsEl.innerHTML = Array.from({ length: 5 }, () => `
+    <tr>
+      <td colspan="5" style="padding: 16px; opacity: 0.5;">Loading fast stats...</td>
+    </tr>
+  `).join('');
+
+  if (loadingEl) loadingEl.style.display = 'none';
+
+  const hireOnly = $('lb-filter-hire')?.checked;
+
+  try {
+    let endpoint = tab === 'global'
+      ? '/leaderboards/global?limit=10'
+      : `/leaderboards/language/${tab}?limit=10`;
+
+    if (hireOnly) endpoint += '&available_for_hire=true';
+
+    const data = await api(endpoint);
+    const entries = data.leaderboard || [];
+
+    if (entries.length === 0) {
+      rowsEl.innerHTML = `<tr><td colspan="5" style="text-align:center; padding: 24px; color: var(--text-muted);">No data yet this week. Start coding!</td></tr>`;
+      return;
+    }
+
+    rowsEl.innerHTML = entries.map((e) => {
+      const username = e.username || '';
+      let displayName = username || 'Unknown';
+      if (displayName.length > 12) displayName = displayName.substring(0, 10) + '...';
+      const nameCell = username
+        ? `<a href="javascript:void(0)" onclick="openPublicProfile('${username}')" style="color:var(--text-main); text-decoration:underline; cursor:pointer;">${displayName}</a>`
+        : displayName;
+      return `
+        <tr>
+          <td class="td-main">${nameCell}</td>
+          <td class="td-main">${fmt.seconds(e.seconds)}</td>
+          <td>${e.top_language || e.language || '—'}</td>
+          <td>${e.top_editor || '—'}</td>
+          <td>${e.top_os || '—'}</td>
+        </tr>
+      `;
+    }).join('');
+  } catch (e) {
+    rowsEl.innerHTML = `<tr><td colspan="5" style="text-align:center; padding: 24px; color: var(--text-muted);">Leaderboard loading failed.</td></tr>`;
+  }
+}
+
 window.closePluginDiffModal = closePluginDiffModal;
 window.openPluginCodeModal = openPluginCodeModal;
 window.closePluginCodeModal = closePluginCodeModal;
@@ -1806,6 +2002,10 @@ window.saveProfileSettings = saveProfileSettings;
 window.openPublicProfile = openPublicProfile;
 window.closePublicProfile = closePublicProfile;
 window.toggleFollow = toggleFollow;
+window.openContactModal = openContactModal;
+window.closeContactModal = closeContactModal;
+window.submitContactDev = submitContactDev;
+window.applyLeaderboardHireFilter = applyLeaderboardHireFilter;
 
 function initLandingPage() {
   initScrollAnimations();
@@ -1840,5 +2040,494 @@ function initLandingPage() {
 
 document.addEventListener('DOMContentLoaded', async () => {
   await initAuth();
-  initLandingPage();
+  applyActiveTheme();
+  if (window.location.pathname === '/' || window.location.pathname === '') {
+    initLandingPage();
+  }
 });
+
+document.addEventListener('visibilitychange', () => {
+  const _vDash = $('dashboard');
+  if (document.visibilityState === 'visible' && currentToken && _vDash && !_vDash.classList.contains('hidden')) {
+    if (!WS || WS.readyState === WebSocket.CLOSED) {
+      _wsRetryCount = 0;
+      _wsRetryDelay = 5000;
+      connectWebSocket();
+    }
+  }
+});
+
+// ══════════════════════════════════════════════════════════════════════════════
+// THEME SYSTEM
+// ══════════════════════════════════════════════════════════════════════════════
+
+// CSS variables exposed in the editor (label: varName)
+const THEME_VARS = [
+  { key: '--bg',           label: 'Background',        type: 'color' },
+  { key: '--bg-card',      label: 'Card background',   type: 'color' },
+  { key: '--bg-input',     label: 'Input background',  type: 'color' },
+  { key: '--bg-hover',     label: 'Hover background',  type: 'color' },
+  { key: '--text-main',    label: 'Primary text',      type: 'color' },
+  { key: '--text-muted',   label: 'Muted text',        type: 'color' },
+  { key: '--text-dark',    label: 'Subtle text',       type: 'color' },
+  { key: '--border',       label: 'Border',            type: 'color' },
+  { key: '--border-focus', label: 'Border focus',      type: 'color' },
+  { key: '--accent',       label: 'Accent',            type: 'color' },
+];
+
+// Read computed CSS variable value from :root
+function getCssVar(name) {
+  return getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+}
+
+// Apply a flat object of CSS variables to :root (live preview)
+function applyCssVars(vars) {
+  if (!vars || typeof vars !== 'object') return;
+  for (const [k, v] of Object.entries(vars)) {
+    if (typeof v === 'string' && v) {
+      document.documentElement.style.setProperty(k, v);
+    }
+  }
+}
+
+// Remove all custom CSS variable overrides from :root inline style
+function clearCssVars(vars) {
+  for (const v of THEME_VARS) {
+    document.documentElement.style.removeProperty(v.key);
+  }
+}
+
+// ── Load & apply saved theme on page load ─────────────────────────────────────
+
+async function applyActiveTheme() {
+  if (!currentToken) {
+    // Try localStorage fallback for guests
+    try {
+      const saved = localStorage.getItem('ct_theme_vars');
+      if (saved) applyCssVars(JSON.parse(saved));
+    } catch (_) {}
+    return;
+  }
+  try {
+    const data = await api('/themes/active');
+    // Merge: base theme variables first, then user custom_vars on top
+    const merged = Object.assign({}, data.variables || {}, data.custom_vars || {});
+    applyCssVars(merged);
+    localStorage.setItem('ct_theme_vars', JSON.stringify(merged));
+  } catch (_) {
+    // Silently fall back to localStorage
+    try {
+      const saved = localStorage.getItem('ct_theme_vars');
+      if (saved) applyCssVars(JSON.parse(saved));
+    } catch (_2) {}
+  }
+}
+
+// ── Store tab switching (Plugins ↔ Themes) ────────────────────────────────────
+
+function switchStoreTab(tab, btn) {
+  const pluginSection = document.getElementById('plugin-store');
+  const themeSection = document.getElementById('theme-store-section');
+  const pluginBtn = document.getElementById('store-tab-plugins');
+  const themeBtn = document.getElementById('store-tab-themes');
+
+  if (tab === 'plugins') {
+    if (pluginSection) pluginSection.style.display = '';
+    if (themeSection) themeSection.style.display = 'none';
+    if (pluginBtn) pluginBtn.classList.add('active');
+    if (themeBtn) themeBtn.classList.remove('active');
+  } else {
+    if (pluginSection) pluginSection.style.display = 'none';
+    if (themeSection) themeSection.style.display = '';
+    if (pluginBtn) pluginBtn.classList.remove('active');
+    if (themeBtn) themeBtn.classList.add('active');
+  }
+}
+
+// ── Theme Store: list community themes ────────────────────────────────────────
+
+let _installedThemeIds = new Set();
+let _activeThemeId = null;
+
+async function loadThemeStore() {
+  const grid = document.getElementById('theme-store-grid');
+  if (!grid) return;
+  try {
+    const { themes } = await api('/themes');
+    if (!themes || themes.length === 0) {
+      grid.innerHTML = `<div style="color:var(--text-muted); padding:16px; grid-column:1/-1;">No themes published yet. Be the first!</div>`;
+      return;
+    }
+    grid.innerHTML = themes.map(t => _renderThemeCard(t)).join('');
+  } catch (e) {
+    grid.innerHTML = `<div style="color:var(--text-muted); padding:16px;">Failed to load themes.</div>`;
+  }
+}
+
+async function loadInstalledThemes() {
+  const bar = document.getElementById('theme-installed-bar');
+  const list = document.getElementById('theme-installed-list');
+  if (!list || !currentToken) return;
+  try {
+    const [installedData, activeData] = await Promise.all([
+      api('/themes/installed'),
+      api('/themes/active'),
+    ]);
+    _activeThemeId = activeData.active_theme_id || null;
+    _installedThemeIds = new Set((installedData.themes || []).map(t => t.id));
+
+    if (installedData.themes && installedData.themes.length > 0) {
+      if (bar) bar.style.display = '';
+      list.innerHTML = installedData.themes.map(t => {
+        const isActive = t.id === _activeThemeId;
+        return `
+          <div style="display:inline-flex; align-items:center; gap:6px; background:var(--bg-card); border:1px solid ${isActive ? 'var(--accent,var(--border-focus))' : 'var(--border)'}; border-radius:var(--radius-pill); padding:4px 10px; font-size:11px;">
+            <span>${t.icon || '🎨'}</span>
+            <span style="color:var(--text-main);">${t.display_name}</span>
+            ${isActive
+              ? `<span style="color:var(--text-dark);">✓ active</span>`
+              : `<button onclick="activateTheme('${t.id}',${JSON.stringify(t.variables)},${JSON.stringify(t.custom_css||null)})" style="background:none;border:none;color:var(--text-dark);cursor:pointer;font-size:11px;padding:0;">Apply</button>`
+            }
+            <button onclick="uninstallTheme('${t.id}',this)" style="background:none;border:none;color:var(--text-dark);cursor:pointer;font-size:11px;padding:0 2px;">✕</button>
+          </div>`;
+      }).join('');
+
+      // Refresh store grid to reflect install state
+      loadThemeStore();
+    }
+  } catch (_) {}
+}
+
+function _renderThemeCard(t) {
+  const installed = _installedThemeIds.has(t.id);
+  const isActive = t.id === _activeThemeId;
+  // Build a mini color swatch from variables
+  const vars = t.variables || {};
+  const swatchBg = vars['--bg'] || '#121212';
+  const swatchCard = vars['--bg-card'] || '#18181b';
+  const swatchText = vars['--text-main'] || '#ffffff';
+  const swatchAccent = vars['--accent'] || vars['--border-focus'] || '#3f3f46';
+
+  return `
+    <div class="card" style="display:flex; flex-direction:column; gap:12px; position:relative;">
+      <!-- Color preview swatch -->
+      <div style="height:48px; border-radius:var(--radius-sm); overflow:hidden; display:grid; grid-template-columns:repeat(4,1fr); border:1px solid var(--border);">
+        <div style="background:${swatchBg};"></div>
+        <div style="background:${swatchCard};"></div>
+        <div style="background:${swatchText};"></div>
+        <div style="background:${swatchAccent};"></div>
+      </div>
+      <div>
+        <div style="display:flex; align-items:center; gap:6px; margin-bottom:4px;">
+          <span style="font-size:16px;">${t.icon || '🎨'}</span>
+          <span style="font-size:13px; color:var(--text-main); font-weight:500;">${t.display_name}</span>
+          ${isActive ? `<span style="font-size:10px; color:var(--text-dark);" class="key-hint">active</span>` : ''}
+        </div>
+        ${t.description ? `<p style="font-size:11px; color:var(--text-dark); margin:0; line-height:1.4;">${t.description}</p>` : ''}
+        <div style="font-size:10px; color:var(--text-dark); margin-top:4px; font-family:var(--font-mono);">by @${t.author_username} · ↓${t.install_count}</div>
+      </div>
+      <div style="display:flex; gap:6px; flex-wrap:wrap; margin-top:auto;">
+        <button class="btn" style="font-size:11px; padding:3px 10px;" onclick="previewTheme(${JSON.stringify(t.variables||{})})">Preview</button>
+        ${installed
+          ? `<button class="btn" style="font-size:11px; padding:3px 10px;" onclick="activateTheme('${t.id}',${JSON.stringify(t.variables)},${JSON.stringify(t.custom_css||null)})">${isActive ? '✓ Active' : 'Apply'}</button>
+             <button class="btn" style="font-size:11px; padding:3px 10px; color:var(--text-dark);" onclick="uninstallTheme('${t.id}',this)">Uninstall</button>`
+          : `<button class="btn" style="font-size:11px; padding:3px 10px;" onclick="installTheme('${t.id}',this)">Install</button>`
+        }
+      </div>
+    </div>`;
+}
+
+async function installTheme(themeId, btn) {
+  if (!currentToken) { showToast('Please log in to install themes.', [], 3000, 'warning'); return; }
+  if (btn) { btn.disabled = true; btn.textContent = 'Installing…'; }
+  try {
+    await api(`/themes/install/${themeId}`, { method: 'POST' });
+    _installedThemeIds.add(themeId);
+    await loadInstalledThemes();
+    showToast('Theme installed!', [], 2500);
+  } catch (e) {
+    showToast('Install failed: ' + e.message, [], 3000, 'warning');
+    if (btn) { btn.disabled = false; btn.textContent = 'Install'; }
+  }
+}
+
+async function uninstallTheme(themeId, btn) {
+  if (!currentToken) return;
+  if (btn) { btn.disabled = true; }
+  try {
+    await api(`/themes/uninstall/${themeId}`, { method: 'DELETE' });
+    _installedThemeIds.delete(themeId);
+    if (_activeThemeId === themeId) {
+      _activeThemeId = null;
+      clearCssVars();
+      localStorage.removeItem('ct_theme_vars');
+    }
+    await loadInstalledThemes();
+    showToast('Theme uninstalled.', [], 2500);
+  } catch (e) {
+    showToast('Failed: ' + e.message, [], 3000, 'warning');
+  }
+}
+
+async function activateTheme(themeId, variables, customCss) {
+  try {
+    clearCssVars();
+    applyCssVars(variables || {});
+    _activeThemeId = themeId;
+    localStorage.setItem('ct_theme_vars', JSON.stringify(variables || {}));
+
+    await api('/themes/apply', {
+      method: 'POST',
+      body: JSON.stringify({ theme_id: themeId, custom_vars: {} }),
+    });
+    await loadInstalledThemes();
+    showToast('Theme applied!', [], 2000);
+    // Sync editor inputs with new theme values
+    _syncEditorInputs(variables || {});
+  } catch (e) {
+    showToast('Failed to apply theme: ' + e.message, [], 3000, 'warning');
+  }
+}
+
+// Live preview without saving
+function previewTheme(variables) {
+  clearCssVars();
+  applyCssVars(variables || {});
+  showToast('Previewing theme — click Apply to keep, Reset to revert.', [], 3000);
+}
+
+// ── CSS Variable Editor ────────────────────────────────────────────────────────
+
+let _editorOrigVars = {};
+
+async function initThemeEditor() {
+  const grid = document.getElementById('theme-var-grid');
+  if (!grid) return;
+
+  // Capture current computed values as baseline
+  for (const v of THEME_VARS) {
+    _editorOrigVars[v.key] = getCssVar(v.key);
+  }
+
+  // Load saved custom_vars from server if logged in
+  let savedVars = {};
+  if (currentToken) {
+    try {
+      const data = await api('/themes/active');
+      savedVars = Object.assign({}, data.variables || {}, data.custom_vars || {});
+    } catch (_) {}
+  } else {
+    try {
+      const s = localStorage.getItem('ct_theme_vars');
+      if (s) savedVars = JSON.parse(s);
+    } catch (_) {}
+  }
+
+  grid.innerHTML = THEME_VARS.map(v => {
+    const current = savedVars[v.key] || _editorOrigVars[v.key] || '';
+    // Determine input type: color picker if value looks like a hex color, else text
+    const isHex = /^#[0-9a-fA-F]{3,8}$/.test(current);
+    return `
+      <div>
+        <label style="font-size:10px; color:var(--text-dark); display:block; margin-bottom:4px; font-family:var(--font-mono);">${v.key}</label>
+        <div style="font-size:11px; color:var(--text-muted); margin-bottom:4px;">${v.label}</div>
+        <div style="display:flex; gap:6px; align-items:center;">
+          ${isHex || v.type === 'color'
+            ? `<input type="color" value="${isHex ? current : '#121212'}" data-var="${v.key}"
+                 oninput="livePreviewVar('${v.key}', this.value); document.getElementById('text-${v.key.replace(/--/g,'').replace(/-/g,'')}').value=this.value;"
+                 style="width:32px; height:28px; padding:2px; border:1px solid var(--border); background:var(--bg-card); border-radius:var(--radius-sm); cursor:pointer;">`
+            : ''
+          }
+          <input type="text" id="text-${v.key.replace(/--/g,'').replace(/-/g,'')}" value="${current}" data-var="${v.key}"
+            oninput="livePreviewVar('${v.key}', this.value)"
+            style="flex:1; background:var(--bg); border:1px solid var(--border); color:var(--text-main); padding:5px 8px; font-size:11px; font-family:var(--font-mono); border-radius:var(--radius-sm);">
+        </div>
+      </div>`;
+  }).join('');
+
+  // Pre-populate publish theme vars textarea
+  const varsEl = document.getElementById('theme-pub-vars');
+  if (varsEl) varsEl.value = JSON.stringify(savedVars, null, 2);
+}
+
+function _syncEditorInputs(vars) {
+  for (const v of THEME_VARS) {
+    const val = vars[v.key];
+    if (!val) continue;
+    const textId = 'text-' + v.key.replace(/--/g,'').replace(/-/g,'');
+    const textEl = document.getElementById(textId);
+    if (textEl) textEl.value = val;
+    const colorEl = document.querySelector(`input[type="color"][data-var="${v.key}"]`);
+    if (colorEl && /^#[0-9a-fA-F]{3,8}$/.test(val)) colorEl.value = val;
+  }
+}
+
+function livePreviewVar(varName, value) {
+  document.documentElement.style.setProperty(varName, value);
+  // Sync publish vars textarea
+  const varsEl = document.getElementById('theme-pub-vars');
+  if (varsEl) {
+    const current = _collectEditorVars();
+    varsEl.value = JSON.stringify(current, null, 2);
+  }
+}
+
+function _collectEditorVars() {
+  const vars = {};
+  document.querySelectorAll('#theme-var-grid input[data-var]').forEach(input => {
+    if (input.type !== 'color' && input.value.trim()) {
+      vars[input.dataset.var] = input.value.trim();
+    }
+  });
+  return vars;
+}
+
+async function saveCustomVars() {
+  const vars = _collectEditorVars();
+  const statusEl = document.getElementById('theme-save-status');
+  try {
+    await api('/themes/apply', {
+      method: 'POST',
+      body: JSON.stringify({ theme_id: _activeThemeId || null, custom_vars: vars }),
+    });
+    applyCssVars(vars);
+    localStorage.setItem('ct_theme_vars', JSON.stringify(vars));
+    if (statusEl) { statusEl.style.display = 'block'; setTimeout(() => { statusEl.style.display = 'none'; }, 2000); }
+  } catch (e) {
+    showToast('Failed to save: ' + e.message, [], 3000, 'warning');
+  }
+}
+
+async function resetThemeEditor() {
+  clearCssVars();
+  _activeThemeId = null;
+  localStorage.removeItem('ct_theme_vars');
+  if (currentToken) {
+    try {
+      await api('/themes/apply', {
+        method: 'POST',
+        body: JSON.stringify({ theme_id: null, custom_vars: {} }),
+      });
+    } catch (_) {}
+  }
+  // Re-read computed defaults (now from stylesheet)
+  const grid = document.getElementById('theme-var-grid');
+  if (grid) initThemeEditor();
+  showToast('Theme reset to default.', [], 2000);
+}
+
+// ── Publish Theme Modal ────────────────────────────────────────────────────────
+
+function openPublishThemeModal() {
+  const modal = document.getElementById('modal-publish-theme');
+  if (!modal) return;
+  // Pre-fill vars from editor
+  const varsEl = document.getElementById('theme-pub-vars');
+  if (varsEl) varsEl.value = JSON.stringify(_collectEditorVars(), null, 2);
+  modal.style.display = 'flex';
+}
+
+function closePublishThemeModal() {
+  const modal = document.getElementById('modal-publish-theme');
+  if (modal) modal.style.display = 'none';
+}
+
+async function submitPublishTheme() {
+  const name = document.getElementById('theme-pub-name')?.value.trim();
+  const displayName = document.getElementById('theme-pub-display-name')?.value.trim();
+  const errEl = document.getElementById('theme-pub-error');
+  const btn = document.getElementById('btn-submit-theme');
+
+  if (!name || !displayName) {
+    if (errEl) { errEl.textContent = 'Name and Display Name are required.'; errEl.style.display = 'block'; }
+    return;
+  }
+
+  let variables = {};
+  try {
+    const raw = document.getElementById('theme-pub-vars')?.value.trim();
+    if (raw) variables = JSON.parse(raw);
+  } catch (_) {
+    if (errEl) { errEl.textContent = 'Invalid JSON in CSS Variables field.'; errEl.style.display = 'block'; }
+    return;
+  }
+
+  if (btn) { btn.disabled = true; btn.textContent = 'Publishing…'; }
+  if (errEl) errEl.style.display = 'none';
+
+  try {
+    await api('/themes/publish', {
+      method: 'POST',
+      body: JSON.stringify({
+        name,
+        display_name: displayName,
+        description: document.getElementById('theme-pub-desc')?.value.trim() || null,
+        version: document.getElementById('theme-pub-version')?.value.trim() || '1.0.0',
+        icon: document.getElementById('theme-pub-icon')?.value.trim() || '🎨',
+        variables,
+      }),
+    });
+    closePublishThemeModal();
+    loadThemeStore();
+    showToast('Theme published!', [], 2500);
+    ['theme-pub-name','theme-pub-display-name','theme-pub-desc','theme-pub-version','theme-pub-icon'].forEach(id => {
+      const el = document.getElementById(id); if (el) el.value = '';
+    });
+  } catch (e) {
+    if (errEl) { errEl.textContent = 'Failed: ' + e.message; errEl.style.display = 'block'; }
+  } finally {
+    if (btn) { btn.disabled = false; btn.textContent = 'Publish Theme'; }
+  }
+}
+
+function exportThemeJSON() {
+  const vars = _collectEditorVars();
+  const blob = new Blob([JSON.stringify(vars, null, 2)], { type: 'application/json' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = 'codetrackr-theme.json';
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
+function importThemeJSON(input) {
+  const file = input.files && input.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = function(e) {
+    try {
+      const vars = JSON.parse(e.target.result);
+      if (typeof vars !== 'object' || Array.isArray(vars)) {
+        showToast('Invalid theme file.', [], 3000, 'warning');
+        return;
+      }
+      applyCssVars(vars);
+      _syncEditorInputs(vars);
+      const varsEl = document.getElementById('theme-pub-vars');
+      if (varsEl) varsEl.value = JSON.stringify(vars, null, 2);
+      showToast('Theme imported — click Save to persist.', [], 3000);
+    } catch (_) {
+      showToast('Could not parse JSON file.', [], 3000, 'warning');
+    }
+    input.value = '';
+  };
+  reader.readAsText(file);
+}
+
+window.exportThemeJSON = exportThemeJSON;
+window.importThemeJSON = importThemeJSON;
+window.switchStoreTab = switchStoreTab;
+window.loadThemeStore = loadThemeStore;
+window.loadInstalledThemes = loadInstalledThemes;
+window.initThemeEditor = initThemeEditor;
+window.installTheme = installTheme;
+window.uninstallTheme = uninstallTheme;
+window.activateTheme = activateTheme;
+window.previewTheme = previewTheme;
+window.livePreviewVar = livePreviewVar;
+window.saveCustomVars = saveCustomVars;
+window.resetThemeEditor = resetThemeEditor;
+window.openPublishThemeModal = openPublishThemeModal;
+window.closePublishThemeModal = closePublishThemeModal;
+window.submitPublishTheme = submitPublishTheme;

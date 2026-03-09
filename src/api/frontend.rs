@@ -15,6 +15,13 @@ pub async fn serve_docs() -> impl IntoResponse {
     }
 }
 
+pub async fn serve_plugin_store() -> impl IntoResponse {
+    match tokio::fs::read_to_string("static/plugin_store.html").await {
+        Ok(content) => Html(content).into_response(),
+        Err(_) => serve_index().await.into_response(),
+    }
+}
+
 const FALLBACK_HTML: &str = r#"<!DOCTYPE html>
 <html lang="en">
 <head>

@@ -12,3 +12,4 @@ pub mod billing;
 pub mod cteditor;
 pub mod plugin_rpc;
 pub mod dashboard;
+pub mod themes;

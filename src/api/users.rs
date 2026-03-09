@@ -20,6 +20,7 @@ pub struct UpdateProfileRequest {
     pub profile_show_activity: Option<bool>,
     pub profile_show_plugins: Option<bool>,
     pub profile_show_streak: Option<bool>,
+    pub available_for_hire: Option<bool>,
 }
 
 pub async fn get_me(
@@ -42,6 +43,7 @@ pub async fn get_me(
         "profile_show_activity": user.profile_show_activity,
         "profile_show_plugins": user.profile_show_plugins,
         "profile_show_streak": user.profile_show_streak,
+        "available_for_hire": user.available_for_hire,
         "country": user.country,
         "timezone": user.timezone,
         "created_at": user.created_at,
@@ -152,6 +154,7 @@ pub async fn get_public_profile(
         "show_activity": user.profile_show_activity,
         "show_plugins": user.profile_show_plugins,
         "show_streak": user.profile_show_streak,
+        "available_for_hire": user.available_for_hire,
         "weekly_seconds": weekly_seconds,
         "streak_days": streak,
         "languages": languages,
@@ -185,8 +188,9 @@ pub async fn update_profile(
             profile_show_activity  = COALESCE($6, profile_show_activity),
             profile_show_plugins   = COALESCE($7, profile_show_plugins),
             profile_show_streak    = COALESCE($8, profile_show_streak),
+            available_for_hire     = COALESCE($9, available_for_hire),
             updated_at             = NOW()
-           WHERE id = $9"#
+           WHERE id = $10"#
     )
     .bind(&body.bio)
     .bind(&body.website)
@@ -196,6 +200,7 @@ pub async fn update_profile(
     .bind(body.profile_show_activity)
     .bind(body.profile_show_plugins)
     .bind(body.profile_show_streak)
+    .bind(body.available_for_hire)
     .bind(user.id)
     .execute(&state.db.pool)
     .await
@@ -311,4 +316,50 @@ pub async fn get_badge(
          (header::CACHE_CONTROL, "no-cache")],
         svg,
     ).into_response()
+}
+
+#[derive(Deserialize)]
+pub struct ContactDevRequest {
+    pub name: String,
+    pub email: String,
+    pub message: String,
+}
+
+pub async fn contact_dev(
+    State(state): State<AppState>,
+    Path(username): Path<String>,
+    axum::Json(body): axum::Json<ContactDevRequest>,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    // Verify target user exists, is public, and available for hire
+    let user = sqlx::query_as::<_, crate::models::User>(
+        "SELECT * FROM users WHERE username = $1 AND is_public = true AND available_for_hire = true"
+    )
+    .bind(&username)
+    .fetch_optional(&state.db.pool)
+    .await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e.to_string()}))))?
+    .ok_or_else(|| (StatusCode::NOT_FOUND, Json(json!({"error": "User not found or not available for hire"}))))?;
+
+    if body.name.trim().is_empty() || body.email.trim().is_empty() || body.message.trim().is_empty() {
+        return Err((StatusCode::BAD_REQUEST, Json(json!({"error": "name, email and message are required"}))));
+    }
+
+    if body.message.len() > 2000 {
+        return Err((StatusCode::BAD_REQUEST, Json(json!({"error": "message too long (max 2000 chars)"}))));
+    }
+
+    // Store the contact request in the database
+    sqlx::query(
+        r#"INSERT INTO hire_contacts (target_user_id, sender_name, sender_email, message)
+           VALUES ($1, $2, $3, $4)"#
+    )
+    .bind(user.id)
+    .bind(body.name.trim())
+    .bind(body.email.trim())
+    .bind(body.message.trim())
+    .execute(&state.db.pool)
+    .await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e.to_string()}))))?;
+
+    Ok(Json(json!({ "status": "sent" })))
 }

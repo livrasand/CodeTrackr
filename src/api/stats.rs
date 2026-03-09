@@ -223,6 +223,225 @@ async fn calculate_streak(state: &AppState, user_id: Uuid) -> (i32, i32) {
     (current, longest)
 }
 
+/// Classify a single heartbeat row into a work type based on file path, branch name,
+/// and is_write flag. Returns one of: "writing", "debugging", "reading", "config".
+fn classify_work_type(file: Option<&str>, branch: Option<&str>, is_write: bool) -> &'static str {
+    let file_lc = file.unwrap_or("").to_lowercase();
+    let branch_lc = branch.unwrap_or("").to_lowercase();
+
+    // Config / tooling: config files, build files, package manifests
+    let config_patterns = [
+        ".json", ".toml", ".yaml", ".yml", ".lock", ".ini", ".cfg", ".conf",
+        "dockerfile", ".env", "makefile", "gradle", "pom.xml", ".gitignore",
+        ".eslintrc", ".prettierrc", "tsconfig", "webpack", "vite.config",
+        "cargo.toml", "package.json", "requirements.txt", "pyproject",
+    ];
+    if config_patterns.iter().any(|p| file_lc.contains(p)) {
+        return "config";
+    }
+
+    // Debugging: branch name hints, or debug/test files
+    let debug_patterns = [
+        "debug", "fix", "bugfix", "hotfix", "test", "spec", ".test.", ".spec.",
+        "_test.", "_spec.", "tests/", "test/", "__tests__",
+    ];
+    if debug_patterns.iter().any(|p| file_lc.contains(p) || branch_lc.contains(p)) {
+        return "debugging";
+    }
+
+    // Writing code: is_write = true and a source code file
+    if is_write {
+        return "writing";
+    }
+
+    // Reading: navigating/reading code (is_write = false, source file)
+    "reading"
+}
+
+pub async fn get_work_types(
+    AuthenticatedUser(user): AuthenticatedUser,
+    State(state): State<AppState>,
+    Query(q): Query<StatsQuery>,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let (start, end) = parse_range(&q);
+
+    #[derive(sqlx::FromRow)]
+    struct HbRow {
+        file: Option<String>,
+        branch: Option<String>,
+        is_write: bool,
+        duration_seconds: i32,
+    }
+
+    let rows = sqlx::query_as::<_, HbRow>(
+        r#"SELECT file, branch, is_write, duration_seconds
+           FROM heartbeats
+           WHERE user_id = $1 AND recorded_at BETWEEN $2 AND $3"#,
+    )
+    .bind(user.id).bind(start).bind(end)
+    .fetch_all(&state.db.pool).await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e.to_string()}))))?;
+
+    let mut writing: i64 = 0;
+    let mut debugging: i64 = 0;
+    let mut reading: i64 = 0;
+    let mut config: i64 = 0;
+
+    for row in &rows {
+        let wt = classify_work_type(row.file.as_deref(), row.branch.as_deref(), row.is_write);
+        let secs = row.duration_seconds as i64;
+        match wt {
+            "writing"   => writing   += secs,
+            "debugging" => debugging += secs,
+            "reading"   => reading   += secs,
+            "config"    => config    += secs,
+            _           => {}
+        }
+    }
+
+    let total = writing + debugging + reading + config;
+
+    let pct = |s: i64| -> f64 {
+        if total == 0 { 0.0 } else { (s as f64 / total as f64) * 100.0 }
+    };
+
+    Ok(Json(json!({
+        "total_seconds": total,
+        "work_types": [
+            { "type": "Writing code",    "seconds": writing,   "percentage": pct(writing)   },
+            { "type": "Debugging",       "seconds": debugging, "percentage": pct(debugging) },
+            { "type": "Reading code",    "seconds": reading,   "percentage": pct(reading)   },
+            { "type": "Config / tooling","seconds": config,    "percentage": pct(config)    },
+        ]
+    })))
+}
+
+pub async fn get_sessions(
+    AuthenticatedUser(user): AuthenticatedUser,
+    State(state): State<AppState>,
+    Query(q): Query<StatsQuery>,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let (start, end) = parse_range(&q);
+
+    // Session gap threshold: 15 minutes of inactivity ends a session
+    const SESSION_GAP_SECS: i64 = 15 * 60;
+
+    #[derive(sqlx::FromRow)]
+    struct HbRow {
+        project: String,
+        language: Option<String>,
+        file: Option<String>,
+        branch: Option<String>,
+        is_write: bool,
+        duration_seconds: i32,
+        recorded_at: DateTime<Utc>,
+    }
+
+    let rows = sqlx::query_as::<_, HbRow>(
+        r#"SELECT project, language, file, branch, is_write, duration_seconds, recorded_at
+           FROM heartbeats
+           WHERE user_id = $1 AND recorded_at BETWEEN $2 AND $3
+           ORDER BY recorded_at ASC"#,
+    )
+    .bind(user.id).bind(start).bind(end)
+    .fetch_all(&state.db.pool).await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e.to_string()}))))?;
+
+    if rows.is_empty() {
+        return Ok(Json(json!({ "sessions": [], "total_sessions": 0 })));
+    }
+
+    // Group into sessions
+    struct Session {
+        start: DateTime<Utc>,
+        end: DateTime<Utc>,
+        total_seconds: i64,
+        project: String,
+        languages: std::collections::HashMap<String, i64>,
+        work_type_seconds: std::collections::HashMap<String, i64>,
+    }
+
+    let mut sessions: Vec<Session> = Vec::new();
+    let mut cur: Option<Session> = None;
+
+    for row in &rows {
+        let wt = classify_work_type(row.file.as_deref(), row.branch.as_deref(), row.is_write);
+        let dur = row.duration_seconds as i64;
+
+        match cur.as_mut() {
+            Some(s) => {
+                let gap = (row.recorded_at - s.end).num_seconds();
+                if gap > SESSION_GAP_SECS {
+                    // Flush current session
+                    sessions.push(cur.take().unwrap());
+                    // Start new session
+                    let mut new_sess = Session {
+                        start: row.recorded_at,
+                        end: row.recorded_at,
+                        total_seconds: dur,
+                        project: row.project.clone(),
+                        languages: std::collections::HashMap::new(),
+                        work_type_seconds: std::collections::HashMap::new(),
+                    };
+                    if let Some(lang) = &row.language {
+                        *new_sess.languages.entry(lang.clone()).or_insert(0) += dur;
+                    }
+                    *new_sess.work_type_seconds.entry(wt.to_string()).or_insert(0) += dur;
+                    cur = Some(new_sess);
+                } else {
+                    s.end = row.recorded_at;
+                    s.total_seconds += dur;
+                    if let Some(lang) = &row.language {
+                        *s.languages.entry(lang.clone()).or_insert(0) += dur;
+                    }
+                    *s.work_type_seconds.entry(wt.to_string()).or_insert(0) += dur;
+                }
+            }
+            None => {
+                let mut new_sess = Session {
+                    start: row.recorded_at,
+                    end: row.recorded_at,
+                    total_seconds: dur,
+                    project: row.project.clone(),
+                    languages: std::collections::HashMap::new(),
+                    work_type_seconds: std::collections::HashMap::new(),
+                };
+                if let Some(lang) = &row.language {
+                    *new_sess.languages.entry(lang.clone()).or_insert(0) += dur;
+                }
+                *new_sess.work_type_seconds.entry(wt.to_string()).or_insert(0) += dur;
+                cur = Some(new_sess);
+            }
+        }
+    }
+    if let Some(s) = cur { sessions.push(s); }
+
+    // Build response — most recent sessions first, up to 20
+    sessions.sort_by(|a, b| b.start.cmp(&a.start));
+    let total_sessions = sessions.len();
+
+    let sessions_json: Vec<serde_json::Value> = sessions.into_iter().take(20).map(|s| {
+        let top_lang = s.languages.iter().max_by_key(|(_, v)| *v).map(|(k, _)| k.clone());
+        let dominant_work = s.work_type_seconds.iter().max_by_key(|(_, v)| *v).map(|(k, _)| k.clone());
+        let duration_min = s.total_seconds / 60;
+        json!({
+            "start": s.start,
+            "end": s.end,
+            "duration_seconds": s.total_seconds,
+            "duration_minutes": duration_min,
+            "project": s.project,
+            "top_language": top_lang,
+            "dominant_work_type": dominant_work,
+            "work_breakdown": s.work_type_seconds,
+        })
+    }).collect();
+
+    Ok(Json(json!({
+        "sessions": sessions_json,
+        "total_sessions": total_sessions,
+    })))
+}
+
 pub async fn get_public_summary(
     State(state): State<AppState>,
 ) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {

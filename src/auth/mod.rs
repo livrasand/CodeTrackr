@@ -18,15 +18,13 @@ pub async fn logout(
         let now = chrono::Utc::now().timestamp();
         let ttl = (claims.exp - now).max(1);
         let key = format!("jwt_blacklist:{}", token);
-        if let Ok(mut guard) = state.redis.get_conn().await {
-            if let Some(conn) = guard.as_mut() {
-                let _: Result<(), _> = redis::cmd("SETEX")
-                    .arg(&key)
-                    .arg(ttl)
-                    .arg("1")
-                    .query_async(conn)
-                    .await;
-            }
+        if let Ok(mut conn) = state.redis.get_conn().await {
+            let _: Result<(), _> = redis::cmd("SETEX")
+                .arg(&key)
+                .arg(ttl)
+                .arg("1")
+                .query_async(&mut conn)
+                .await;
         }
     }
     (StatusCode::OK, Json(json!({"message": "Logged out successfully"})))
@@ -94,11 +92,10 @@ impl FromRequestParts<AppState> for AuthenticatedUser {
             // Fix #10: Check JWT blacklist (populated on logout)
             let blacklist_key = format!("jwt_blacklist:{}", token);
             let is_blacklisted = async {
-                let mut guard = state.redis.get_conn().await.ok()?;
-                let conn = guard.as_mut()?;
+                let mut conn = state.redis.get_conn().await.ok()?;
                 let val: Option<String> = redis::cmd("GET")
                     .arg(&blacklist_key)
-                    .query_async(conn)
+                    .query_async(&mut conn)
                     .await
                     .ok()?;
                 val

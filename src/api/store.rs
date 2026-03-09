@@ -7,6 +7,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use uuid::Uuid;
 use chrono::{DateTime, Utc};
+use regex::Regex;
 
 use crate::{AppState, auth::AuthenticatedUser};
 
@@ -156,7 +157,84 @@ pub async fn publish_plugin(
     .await
     .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e.to_string()}))))?;
 
+    // Parse dependencies from description
+    if let Some(desc) = &plugin.description {
+        let re = Regex::new(r"@([a-z0-9-]+)").unwrap();
+        for cap in re.captures_iter(desc) {
+            let dep_name = &cap[1];
+            sqlx::query(
+                "INSERT INTO plugin_dependencies (plugin_id, dependency_name) VALUES ($1, $2) ON CONFLICT DO NOTHING"
+            )
+            .bind(plugin.id)
+            .bind(dep_name)
+            .execute(&state.db.pool)
+            .await
+            .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e.to_string()}))))?;
+        }
+    }
+
     Ok(Json(json!({ "status": "published", "plugin": plugin })))
+}
+
+async fn install_plugin_recursive(user_id: Uuid, plugin_id: Uuid, state: &AppState) -> Result<(), (StatusCode, Json<Value>)> {
+    use std::collections::{HashSet, VecDeque};
+
+    let mut queue = VecDeque::new();
+    let mut visited = HashSet::new();
+
+    queue.push_back(plugin_id);
+    visited.insert(plugin_id);
+
+    while let Some(current_id) = queue.pop_front() {
+        // Check if already installed
+        let installed: bool = sqlx::query_scalar(
+            "SELECT EXISTS(SELECT 1 FROM installed_plugins WHERE user_id = $1 AND plugin_id = $2)"
+        )
+        .bind(user_id)
+        .bind(current_id)
+        .fetch_one(&state.db.pool)
+        .await
+        .unwrap_or(false);
+
+        if !installed {
+            // Get deps and add to queue if not visited
+            let deps: Vec<String> = sqlx::query_scalar(
+                "SELECT dependency_name FROM plugin_dependencies WHERE plugin_id = $1"
+            )
+            .bind(current_id)
+            .fetch_all(&state.db.pool)
+            .await
+            .unwrap_or_default();
+
+            for dep_name in deps {
+                if let Some(dep_id) = sqlx::query_scalar::<_, Uuid>(
+                    "SELECT id FROM plugin_store WHERE name = $1 AND is_banned = false AND is_published = true"
+                )
+                .bind(&dep_name)
+                .fetch_optional(&state.db.pool)
+                .await
+                .unwrap_or(None)
+                {
+                    if !visited.contains(&dep_id) {
+                        visited.insert(dep_id);
+                        queue.push_back(dep_id);
+                    }
+                }
+            }
+
+            // Install this plugin
+            sqlx::query(
+                "INSERT INTO installed_plugins (user_id, plugin_id) VALUES ($1, $2) ON CONFLICT DO NOTHING"
+            )
+            .bind(user_id)
+            .bind(current_id)
+            .execute(&state.db.pool)
+            .await
+            .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e.to_string()}))))?;
+        }
+    }
+
+    Ok(())
 }
 
 pub async fn install_plugin(
@@ -178,14 +256,7 @@ pub async fn install_plugin(
         return Err((StatusCode::FORBIDDEN, Json(json!({"error": "This plugin is not available"}))));
     }
 
-    sqlx::query(
-        "INSERT INTO installed_plugins (user_id, plugin_id) VALUES ($1, $2) ON CONFLICT DO NOTHING"
-    )
-    .bind(user.id)
-    .bind(plugin_id)
-    .execute(&state.db.pool)
-    .await
-    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e.to_string()}))))?;
+    install_plugin_recursive(user.id, plugin_id, &state).await?;
 
     Ok(Json(json!({ "status": "installed" })))
 }

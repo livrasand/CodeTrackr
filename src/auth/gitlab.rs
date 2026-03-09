@@ -132,6 +132,16 @@ pub async fn gitlab_callback(
     let jwt = create_jwt(&user.id.to_string(), &state.config.jwt_secret)
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e.to_string()}))))?;
 
+    // Ejecutar hooks de lifecycle para 'on_user_login'
+    let event_data = json!({
+        "user_id": user.id,
+        "username": user.username,
+        "display_name": user.display_name,
+        "provider": "gitlab",
+        "is_new_user": user.created_at == user.updated_at // Simplificación para detectar si es nuevo usuario
+    });
+    crate::api::plugin_rpc::execute_lifecycle_hooks(&user.id, "on_user_login", event_data, &state).await;
+
     Ok(Redirect::temporary(&format!(
         "{}/dashboard#token={}",
         state.config.frontend_url, jwt

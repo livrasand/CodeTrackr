@@ -1,12 +1,11 @@
 use futures::StreamExt;
-use redis::{aio::ConnectionManager, Client};
+use redis::Client;
 use anyhow::Result;
-use std::sync::Arc;
-use tokio::sync::Mutex;
+use deadpool_redis::{Pool, Config, Runtime};
 
 #[derive(Clone)]
 pub struct RedisPool {
-    pub conn: Arc<Mutex<Option<ConnectionManager>>>,
+    pub pool: Pool,
     pub client: Client,
     pub url: String,
 }
@@ -14,29 +13,24 @@ pub struct RedisPool {
 impl RedisPool {
     pub async fn new(url: &str) -> Result<Self> {
         let client = Client::open(url)?;
-        let conn = ConnectionManager::new(client.clone()).await?;
+        let cfg = Config::from_url(url);
+        let pool = cfg.create_pool(Some(Runtime::Tokio1))
+            .map_err(|e| anyhow::anyhow!("Failed to create Redis pool: {e}"))?;
+        // Validate connectivity at startup
+        let _ = pool.get().await
+            .map_err(|e| anyhow::anyhow!("Redis pool initial connection failed: {e}"))?;
         Ok(Self {
-            conn: Arc::new(Mutex::new(Some(conn))),
+            pool,
             client,
             url: url.to_string(),
         })
     }
 
-    /// Returns a live ConnectionManager, reconnecting if the previous one died.
-    pub async fn get_conn(&self) -> Result<tokio::sync::MutexGuard<'_, Option<ConnectionManager>>> {
-        let mut guard = self.conn.lock().await;
-        if guard.is_none() {
-            match ConnectionManager::new(self.client.clone()).await {
-                Ok(new_conn) => {
-                    tracing::info!("Redis: reconnected successfully.");
-                    *guard = Some(new_conn);
-                }
-                Err(e) => {
-                    return Err(anyhow::anyhow!("Redis reconnect failed: {}", e));
-                }
-            }
-        }
-        Ok(guard)
+    /// Returns a pooled connection. Each call gets an independent connection
+    /// from the pool — no global mutex, safe for high concurrency.
+    pub async fn get_conn(&self) -> Result<deadpool_redis::Connection> {
+        self.pool.get().await
+            .map_err(|e| anyhow::anyhow!("Redis pool exhausted: {e}"))
     }
 }
 
@@ -48,35 +42,28 @@ pub mod ws_handler {
     };
     use serde::Deserialize;
     use serde_json::json;
-    use std::collections::HashMap;
-    use std::time::{Instant, Duration};
     use crate::{AppState, auth::AuthenticatedUser};
 
     // In-process broadcast channel for real-time updates
     use once_cell::sync::Lazy;
-    use tokio::sync::{broadcast, Mutex};
+    use tokio::sync::broadcast;
 
     pub static BROADCAST: Lazy<broadcast::Sender<String>> = Lazy::new(|| {
         broadcast::channel::<String>(1024).0
     });
 
-    /// Tickets WS en memoria: ticket -> (user_id, expiry)
-    /// No necesitan Redis — son locales al proceso y de vida muy corta (30s).
-    static WS_TICKETS: Lazy<Mutex<HashMap<String, (String, Instant)>>> =
-        Lazy::new(|| Mutex::new(HashMap::new()));
-
-    const TICKET_TTL: Duration = Duration::from_secs(30);
+    const TICKET_TTL_SECS: u64 = 30;
 
     pub fn publish(msg: String) {
         let _ = BROADCAST.send(msg);
     }
 
     /// POST /api/v1/ws-ticket
-    /// Genera un ticket de un solo uso (TTL 30s) para autenticar la conexión WS
-    /// sin exponer el JWT en la query string ni en los logs del servidor.
+    /// Genera un ticket de un solo uso (TTL 30s) almacenado en Redis.
+    /// Escala horizontalmente entre instancias — cualquier nodo puede validar el ticket.
     pub async fn create_ws_ticket(
         AuthenticatedUser(user): AuthenticatedUser,
-        State(_state): State<AppState>,
+        State(state): State<AppState>,
     ) -> Json<serde_json::Value> {
         use rand::Rng;
         let ticket: String = rand::thread_rng()
@@ -85,12 +72,22 @@ pub mod ws_handler {
             .map(char::from)
             .collect();
 
-        let expiry = Instant::now() + TICKET_TTL;
-        {
-            let mut map = WS_TICKETS.lock().await;
-            // Limpiar tickets expirados antes de insertar
-            map.retain(|_, (_, exp)| *exp > Instant::now());
-            map.insert(ticket.clone(), (user.id.to_string(), expiry));
+        let key = format!("ws_ticket:{}", ticket);
+        match state.redis.get_conn().await {
+            Ok(mut conn) => {
+                let result: Result<(), _> = redis::cmd("SETEX")
+                    .arg(&key)
+                    .arg(TICKET_TTL_SECS)
+                    .arg(user.id.to_string())
+                    .query_async(&mut conn)
+                    .await;
+                if let Err(e) = result {
+                    tracing::warn!("[ws] Failed to store ticket in Redis: {e}");
+                }
+            }
+            Err(e) => {
+                tracing::warn!("[ws] Redis unavailable when creating ticket: {e}");
+            }
         }
 
         Json(json!({"ticket": ticket}))
@@ -104,21 +101,37 @@ pub mod ws_handler {
     pub async fn ws_handler(
         ws: WebSocketUpgrade,
         Query(params): Query<WsQuery>,
-        State(_state): State<AppState>,
+        State(state): State<AppState>,
     ) -> Response {
         let ticket = match params.ticket {
             Some(t) if !t.is_empty() => t,
             _ => return (StatusCode::UNAUTHORIZED, "Missing ticket").into_response(),
         };
 
-        // Consumir ticket (single-use) del store en memoria
-        let valid = {
-            let mut map = WS_TICKETS.lock().await;
-            if let Some((_, expiry)) = map.remove(&ticket) {
-                expiry > Instant::now()
-            } else {
+        let key = format!("ws_ticket:{}", ticket);
+        // GET + DEL secuencial para compatibilidad con Redis < 6.2 (GETDEL requiere 6.2+)
+        let valid = match state.redis.get_conn().await {
+            Ok(mut conn) => {
+                let val: Option<String> = redis::cmd("GET")
+                    .arg(&key)
+                    .query_async(&mut conn)
+                    .await
+                    .unwrap_or(None);
+                if val.is_some() {
+                    let _: () = redis::cmd("DEL")
+                        .arg(&key)
+                        .query_async(&mut conn)
+                        .await
+                        .unwrap_or(());
+                } else {
+                    tracing::warn!("[ws] ticket not found or expired: {}", &ticket[..8]);
+                }
+                val.is_some()
+            },
+            Err(e) => {
+                tracing::warn!("[ws] Redis connection failed for ticket validation: {e}");
                 false
-            }
+            },
         };
 
         if valid {
@@ -176,7 +189,7 @@ pub async fn start_redis_subscriber(redis_url: String) {
 async fn subscribe_loop(url: &str) -> anyhow::Result<()> {
     
     let client = redis::Client::open(url)?;
-    let mut pubsub = client.get_async_connection().await?.into_pubsub();
+    let mut pubsub = client.get_async_pubsub().await?;
     pubsub.subscribe("codetrackr:updates").await?;
 
     loop {

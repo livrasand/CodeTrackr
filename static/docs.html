@@ -231,10 +231,41 @@
                 </div>
             </div>
             <div class="sidebar-group">
+                <h3>Themes</h3>
+                <div class="sidebar-list">
+                    <a href="#themes-overview" class="sidebar-link">Overview</a>
+                    <a href="#themes-install" class="sidebar-link">Install a Theme</a>
+                    <a href="#themes-customize" class="sidebar-link">Customize</a>
+                    <a href="#themes-export-import" class="sidebar-link">Export &amp; Import</a>
+                    <a href="#themes-publish" class="sidebar-link">Publish a Theme</a>
+                    <a href="#themes-api" class="sidebar-link">Themes API</a>
+                </div>
+            </div>
+            <div class="sidebar-group">
                 <h3>API</h3>
                 <div class="sidebar-list">
                     <a href="#import" class="sidebar-link">Import Data</a>
                     <a href="#creating-extensions" class="sidebar-link">IDE Integration</a>
+                    <a href="#creating-ide-plugins" class="sidebar-link">Creating IDE Plugins</a>
+                </div>
+            </div>
+            <div class="sidebar-group">
+                <h3>API Reference</h3>
+                <div class="sidebar-list">
+                    <a href="#api-intro" class="sidebar-link">Introduction</a>
+                    <a href="#api-auth" class="sidebar-link">Authentication</a>
+                    <a href="#api-heartbeat" class="sidebar-link">Heartbeat</a>
+                    <a href="#api-heartbeats-bulk" class="sidebar-link">Heartbeats Bulk</a>
+                    <a href="#api-stats-summary" class="sidebar-link">Stats Summary</a>
+                    <a href="#api-stats-languages" class="sidebar-link">Stats Languages</a>
+                    <a href="#api-stats-projects" class="sidebar-link">Stats Projects</a>
+                    <a href="#api-stats-daily" class="sidebar-link">Stats Daily</a>
+                    <a href="#api-stats-streaks" class="sidebar-link">Stats Streaks</a>
+                    <a href="#api-leaderboards" class="sidebar-link">Leaderboards</a>
+                    <a href="#api-users" class="sidebar-link">Users</a>
+                    <a href="#api-keys" class="sidebar-link">API Keys</a>
+                    <a href="#api-export" class="sidebar-link">Export</a>
+                    <a href="#api-billing" class="sidebar-link">Billing</a>
                 </div>
             </div>
             <div class="sidebar-group">
@@ -251,6 +282,7 @@
                     <a href="#ui-code" class="sidebar-link">Code Blocks</a>
                     <a href="#ui-empty" class="sidebar-link">Empty States</a>
                     <a href="#ui-forms" class="sidebar-link">Forms &amp; Inputs</a>
+                    <a href="#ide-colors" class="sidebar-link">IDE Color Palette</a>
                 </div>
             </div>
         </aside>
@@ -474,7 +506,7 @@ fetch('/api/v1/stats/summary?range=7d', {
                     <li>Click <strong>Publish</strong>.</li>
                 </ul>
                 <p>Or publish directly via the API:</p>
-                <pre><code class="language-bash">curl -X POST https://codetrackr.dev/api/v1/store/publish \
+                <pre><code class="language-bash">curl -X POST https://codetrackr.leapcell.app/api/v1/store/publish \
   -H "Authorization: Bearer YOUR_TOKEN" \
   -H "Content-Type: application/json" \
   -d '{
@@ -794,8 +826,42 @@ fetch('/api/v1/plugins/my-plugin/rpc/stats', {
   }
 };</code></pre>
 
-                <h3>Full example — Streak notifier with RPC</h3>
-                <p>A complete lifecycle plugin that tracks the user's coding streak in Redis, checks for activity on every tick, and exposes an RPC endpoint so a widget plugin can display the streak count.</p>
+                <h3>Lifecycle hooks (backend only)</h3>
+                <p>In addition to RPC endpoints, plugins can export a <code>lifecycle</code> object with hooks that run automatically on the server when specific events occur. These hooks have full access to the database and Redis, but run entirely on the backend — they don't affect the frontend.</p>
+
+                <h4>Available lifecycle events</h4>
+                <div class="table-wrapper">
+                    <table>
+                        <thead><tr><th>Hook</th><th>When it runs</th><th>Arguments</th></tr></thead>
+                        <tbody>
+                            <tr><td class="td-main"><code>on_user_login</code></td><td>When a user logs in via OAuth (GitHub/GitLab)</td><td><code>(ctx, event)</code> — event contains user info and login details</td></tr>
+                            <tr><td class="td-main"><code>on_heartbeat</code></td><td>After processing each individual heartbeat</td><td><code>(ctx, event)</code> — event contains heartbeat data</td></tr>
+                            <tr><td class="td-main"><code>on_heartbeats_bulk</code></td><td>After processing bulk heartbeat imports</td><td><code>(ctx, event)</code> — event contains count of processed heartbeats</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+
+                <h4>Example lifecycle plugin</h4>
+                <pre><code class="language-javascript">// Example: Welcome new users and track first heartbeat
+const lifecycle = {
+  'on_user_login': async (ctx, event) => {
+    if (event.is_new_user) {
+      // Send welcome message or set up initial data
+      await ctx.redis.set('welcome_shown', 'false');
+      log('Welcome new user:', event.username);
+    }
+  },
+
+  'on_heartbeat': async (ctx, event) => {
+    // Track when user sends their first heartbeat
+    const hasFirstHeartbeat = await ctx.redis.get('has_first_heartbeat');
+    if (!hasFirstHeartbeat) {
+      await ctx.redis.set('has_first_heartbeat', 'true');
+      log('First heartbeat from user:', ctx.user_id, 'project:', event.project);
+    }
+  }
+};</code></pre>
+                <p>Lifecycle hooks run in parallel for all installed plugins and are fire-and-forget — they don't return values and errors don't block the main operation. Use them for background processing, logging, notifications, or data aggregation.</p>
                 <pre><code class="language-javascript">// ── on_install: initialize Redis state ───────────────────────────────────────
 async function on_install(ctx) {
   await ctx.redis.set('streak', '0');
@@ -871,7 +937,7 @@ fetch('/api/v1/plugins/streak-notifier/rpc/get-streak', {
                 <p>The <code>POST /api/v1/import</code> endpoint accepts an array of heartbeats in JSON format, allowing you to migrate data from any external tool. Authentication is via API Key or Bearer token.</p>
 
                 <h3>Request</h3>
-                <pre><code class="language-bash">curl -X POST https://codetrackr.dev/api/v1/import \
+                <pre><code class="language-bash">curl -X POST https://codetrackr.leapcell.app/api/v1/import \
   -H "X-API-Key: ct_xyz123" \
   -H "Content-Type: application/json" \
   -d '[
@@ -979,7 +1045,7 @@ fetch('/api/v1/plugins/streak-notifier/rpc/get-streak', {
                 <p>Drop a standard POST payload to the <code>/api/v1/heartbeat</code> endpoint with your API Key to
                     track activity anywhere.</p>
 
-                <pre><code class="language-bash">curl -X POST https://codetrackr.dev/api/v1/heartbeat \
+                <pre><code class="language-bash">curl -X POST https://codetrackr.leapcell.app/api/v1/heartbeat \
   -H "X-API-Key: ct_xyz123" \
   -H "Content-Type: application/json" \
   -d '{
@@ -990,7 +1056,7 @@ fetch('/api/v1/plugins/streak-notifier/rpc/get-streak', {
 
                 <h3>Supported Environments</h3>
                 <p>You can build or use existing wrappers for an extensive list of platforms:</p>
-                <div class="ide-grid">
+                <div id="ide-grid" class="ide-grid">
                     <div class="ide-card">VS Code</div>
                     <div class="ide-card">IntelliJ IDEA</div>
                     <div class="ide-card">Neovim</div>
@@ -1008,6 +1074,106 @@ fetch('/api/v1/plugins/streak-notifier/rpc/get-streak', {
                 <h3>Bulk Pipeline Updates</h3>
                 <p>If your environment caches offline time, you can bulk post logs to <code>/api/v1/heartbeats</code> to
                     restore histories seamlessly.</p>
+            </section>
+
+            <section id="creating-ide-plugins">
+                <h2>Creating IDE Plugins</h2>
+                <p>This guide will help you create a new CodeTrackr plugin for your text editor/IDE. Inspired by the WakaTime plugin ecosystem, CodeTrackr plugins monitor your coding activity and send heartbeats to the CodeTrackr API to track time spent on projects.</p>
+
+                <p>Let us know if you're building a CodeTrackr plugin! We can help you via email and promote your plugin to all CodeTrackr users.</p>
+
+                <h3>Table of Contents</h3>
+                <ul>
+                    <li>Getting Started</li>
+                    <li>Plugin Overview</li>
+                    <li>Plugin Initialization</li>
+                    <li>Listening for Editor Events</li>
+                    <li>Handling Editor Events</li>
+                    <li>Sending Heartbeat to CodeTrackr</li>
+                    <li>Deciding To Send Heartbeat or Not</li>
+                    <li>Executing Background Process</li>
+                    <li>Tracking Last Heartbeat</li>
+                    <li>Debugging</li>
+                    <li>Releasing</li>
+                </ul>
+
+                <h3>Getting Started</h3>
+                <p>A CodeTrackr plugin is simple… just send a POST request to the CodeTrackr API with the current file details.</p>
+                <pre><code class="language-bash">curl -X POST https://codetrackr.leapcell.app/api/v1/heartbeat \
+  -H "X-API-Key: YOUR_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "project": "my-project",
+    "file": "src/main.rs",
+    "language": "rust",
+    "duration": 60
+  }'</code></pre>
+                <p>The code above sends a heartbeat to the CodeTrackr API and starts logging time for the project.</p>
+
+                <p>CodeTrackr plugins have two parts:</p>
+                <ul>
+                    <li><strong>Editor plugin</strong> - the core which uses the editor's API and sends the currently focused file to CodeTrackr when the user moves the cursor or types.</li>
+                    <li><strong>CodeTrackr API</strong> - the common API which takes file details as input, detects metadata, and logs the activity.</li>
+                </ul>
+
+                <h3>Plugin Overview</h3>
+                <p>This is a high-level overview of a CodeTrackr plugin from the time it's loaded, until the editor is exited.</p>
+                <ul>
+                    <li>Plugin loaded by text editor/IDE, runs plugin's initialization code</li>
+                    <li>Initialization code: Setup global variables, check for API key, setup event listeners</li>
+                    <li>Current file changed: Send heartbeat with is_write=false</li>
+                    <li>User types in file: Send heartbeat with is_write=false</li>
+                    <li>File saved: Send heartbeat with is_write=true</li>
+                    <li>Send heartbeat function: Check last heartbeat, if not too frequent, send to API</li>
+                </ul>
+
+                <h3>Plugin Initialization</h3>
+                <p>This happens every time your plugin is loaded. Check for API key, set up variables, and event listeners.</p>
+                <p>Examples of init code can be viewed in existing CodeTrackr plugins (e.g., VS Code extension).</p>
+
+                <h3>Listening for Editor Events</h3>
+                <p>The last step when initializing your plugin is setting up event listeners. Most editors support:</p>
+                <ul>
+                    <li>Currently focused file has changed</li>
+                    <li>Current file was modified</li>
+                    <li>A file was saved</li>
+                </ul>
+                <p>Examples of listening for these events in various editors.</p>
+
+                <h3>Handling Editor Events</h3>
+                <p>Every event handler should call the same function. The File Save event should pass is_write=true.</p>
+
+                <h4>File Changed</h4>
+                <p>The file changed event detects when the editor focus changes to a new file.</p>
+
+                <h4>File Modified</h4>
+                <p>The file modified event triggers every time the focused file is changed.</p>
+
+                <h4>File Saved</h4>
+                <p>The file saved event detects when file contents are written to disk.</p>
+
+                <h3>Sending Heartbeat to CodeTrackr</h3>
+                <p>Every event handler calls a common function that accepts is_write boolean.</p>
+                <p>The function detects the current file and sends to CodeTrackr.</p>
+
+                <h3>Deciding To Send Heartbeat or Not</h3>
+                <p>Check if enough time has passed since last heartbeat for the same file.</p>
+                <pre><code class="language-javascript">if (enoughTimeHasPassed(lastSentTime) || currentlyFocusedFileHasChanged(lastSentFile) || isFileSavedEvent()) {
+    sendHeartbeatToCodeTrackr();
+}</code></pre>
+
+                <h3>Executing Background Process</h3>
+                <p>Send a POST request to /api/v1/heartbeat with the heartbeat data. Use your API key for authentication.</p>
+                <p>Fields include: project, file, language, branch, commit, workspace_root, duration, is_write, editor, os, machine, time.</p>
+
+                <h3>Tracking Last Heartbeat</h3>
+                <p>After sending, update lastSentTime and lastSentFile.</p>
+
+                <h3>Debugging</h3>
+                <p>Check the dashboard or API for received heartbeats. Use logging in your plugin.</p>
+
+                <h3>Releasing</h3>
+                <p>Publish your plugin on the editor's marketplace. Send us your repo to promote it.</p>
             </section>
 
             <section id="plugin-store">
@@ -1033,7 +1199,7 @@ fetch('/api/v1/plugins/streak-notifier/rpc/get-streak', {
                 <p>You must be authenticated via GitHub or GitLab to publish. Use the <strong>+ Publish Plugin</strong>
                     button in your dashboard, or call the API directly:</p>
 
-                <pre><code class="language-bash">curl -X POST https://codetrackr.dev/api/v1/store/publish \
+                <pre><code class="language-bash">curl -X POST https://codetrackr.leapcell.app/api/v1/store/publish \
   -H "Authorization: Bearer YOUR_TOKEN" \
   -H "Content-Type: application/json" \
   -d '{
@@ -1107,7 +1273,7 @@ fetch('/api/v1/plugins/streak-notifier/rpc/get-streak', {
                     required.</p>
                 <p>To update, call the same publish endpoint with the identical <code>name</code> and whatever fields
                     you want to change:</p>
-                <pre><code class="language-bash">curl -X POST https://codetrackr.dev/api/v1/store/publish \
+                <pre><code class="language-bash">curl -X POST https://codetrackr.leapcell.app/api/v1/store/publish \
   -H "Authorization: Bearer YOUR_TOKEN" \
   -H "Content-Type: application/json" \
   -d '{
@@ -1124,6 +1290,167 @@ fetch('/api/v1/plugins/streak-notifier/rpc/get-streak', {
                 </ul>
             </section>
 
+
+            <!-- ═══════════════════════════════════════════════════════════ -->
+            <!-- THEMES                                                     -->
+            <!-- ═══════════════════════════════════════════════════════════ -->
+
+            <section id="themes-overview">
+                <h2>Themes</h2>
+                <p>The Theme Store lets any authenticated user create, publish, install, and apply CSS variable themes to personalize the CodeTrackr interface. Themes are stored in the database and applied at runtime — no build step required.</p>
+                <ul>
+                    <li><strong>Browse:</strong> Open the <a href="/plugins">Plugin Store</a> and click the <strong>Themes</strong> tab to see all published themes.</li>
+                    <li><strong>Install:</strong> One click to add a theme to your library. Installed themes appear in the <em>Installed themes</em> bar above the editor.</li>
+                    <li><strong>Apply:</strong> Click <strong>Apply</strong> on any installed theme to activate it. The dashboard repaints instantly via CSS custom properties — no reload needed.</li>
+                    <li><strong>Customize:</strong> Use the built-in CSS variable editor to override any color. Changes preview live before you save.</li>
+                    <li><strong>Export / Import:</strong> Download your current variable set as a <code>.json</code> file and share it with others, or load someone else's file directly into the editor.</li>
+                    <li><strong>Publish:</strong> Share your theme with the community through the <strong>+ Publish Theme</strong> button.</li>
+                </ul>
+                <p>Themes are purely cosmetic — they only set CSS custom properties and an optional raw CSS override block. They have no access to your data or the application logic.</p>
+            </section>
+
+            <section id="themes-install">
+                <h2>Install a Theme</h2>
+                <p>Go to <strong>Plugin Store → Themes</strong>. Each card shows a four-color swatch preview. Click <strong>Install</strong> to add the theme to your library, then <strong>Apply</strong> to activate it.</p>
+                <p>To remove a theme from your library, click <strong>Uninstall</strong>. If the uninstalled theme was active, the dashboard reverts to the default style.</p>
+                <p>Via the API:</p>
+                <pre><code class="language-bash"># Install
+curl -X POST https://codetrackr.leapcell.app/api/v1/themes/install/THEME_ID \
+  -H "Authorization: Bearer YOUR_TOKEN"
+
+# Uninstall
+curl -X DELETE https://codetrackr.leapcell.app/api/v1/themes/uninstall/THEME_ID \
+  -H "Authorization: Bearer YOUR_TOKEN"</code></pre>
+            </section>
+
+            <section id="themes-customize">
+                <h2>Customize CSS Variables</h2>
+                <p>The <strong>Customize — CSS Variables</strong> editor in the Themes tab lets you override any of the ten design tokens that control the interface palette. Changes apply live as you move the color picker or type a value.</p>
+                <div class="table-wrapper">
+                    <table>
+                        <thead><tr><th>Variable</th><th>Controls</th></tr></thead>
+                        <tbody>
+                            <tr><td class="td-main"><code>--bg</code></td><td>Page background</td></tr>
+                            <tr><td class="td-main"><code>--bg-card</code></td><td>Card and panel background</td></tr>
+                            <tr><td class="td-main"><code>--bg-input</code></td><td>Input field background</td></tr>
+                            <tr><td class="td-main"><code>--bg-hover</code></td><td>Hover state background</td></tr>
+                            <tr><td class="td-main"><code>--text-main</code></td><td>Primary text color</td></tr>
+                            <tr><td class="td-main"><code>--text-muted</code></td><td>Secondary / muted text</td></tr>
+                            <tr><td class="td-main"><code>--text-dark</code></td><td>Dimmed label text</td></tr>
+                            <tr><td class="td-main"><code>--border</code></td><td>Default border color</td></tr>
+                            <tr><td class="td-main"><code>--border-focus</code></td><td>Focused / active border</td></tr>
+                            <tr><td class="td-main"><code>--accent</code></td><td>Accent / highlight color</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+                <p>Click <strong>Save</strong> to persist your overrides to the server. They are stored in <code>user_theme_prefs.custom_vars</code> and merged on top of the active theme every time you load the dashboard. Click <strong>Reset</strong> to clear all overrides and return to the base theme values.</p>
+                <p>To apply variables programmatically via the API:</p>
+                <pre><code class="language-bash">curl -X POST https://codetrackr.leapcell.app/api/v1/themes/apply \
+  -H "Authorization: Bearer YOUR_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "theme_id": "THEME_UUID_OR_NULL",
+    "custom_vars": {
+      "--bg": "#0d0d0d",
+      "--accent": "#a78bfa"
+    }
+  }'</code></pre>
+            </section>
+
+            <section id="themes-export-import">
+                <h2>Export &amp; Import</h2>
+                <p>Use <strong>Export</strong> to download the current editor state as <code>codetrackr-theme.json</code> — a plain JSON object mapping variable names to values:</p>
+                <pre><code class="language-json">{
+  "--bg": "#0d0d0d",
+  "--bg-card": "#111113",
+  "--bg-input": "#18181b",
+  "--bg-hover": "#1e1e22",
+  "--text-main": "#f4f4f5",
+  "--text-muted": "#a1a1aa",
+  "--text-dark": "#52525b",
+  "--border": "#27272a",
+  "--border-focus": "#3f3f46",
+  "--accent": "#a78bfa"
+}</code></pre>
+                <p>Use <strong>Import</strong> to load a <code>.json</code> file into the editor. The variables are applied as a live preview immediately — click <strong>Save</strong> to persist them or <strong>Reset</strong> to discard.</p>
+                <ul>
+                    <li>Only the ten whitelisted variables above are applied. Unknown keys are silently ignored.</li>
+                    <li>The file must be valid JSON with string values. Any other format shows a warning toast and is rejected.</li>
+                    <li>You can share theme files directly with other users — they import and apply them with the same flow.</li>
+                </ul>
+            </section>
+
+            <section id="themes-publish">
+                <h2>Publish a Theme</h2>
+                <p>Click <strong>+ Publish Theme</strong> in the Themes tab. The form pre-fills the variable fields from the current editor state. Fill in the metadata and click <strong>Publish Theme</strong>.</p>
+                <h3>Publish fields reference</h3>
+                <div class="table-wrapper">
+                    <table>
+                        <thead><tr><th>Field</th><th>Required</th><th>Description</th></tr></thead>
+                        <tbody>
+                            <tr><td class="td-main"><code>name</code></td><td>Yes</td><td>Unique kebab-case identifier, e.g. <code>dracula-dark</code></td></tr>
+                            <tr><td class="td-main"><code>display_name</code></td><td>Yes</td><td>Human-readable title shown in the store card</td></tr>
+                            <tr><td class="td-main"><code>description</code></td><td>No</td><td>Short description shown in the store card</td></tr>
+                            <tr><td class="td-main"><code>version</code></td><td>No</td><td>Semver string, defaults to <code>1.0.0</code></td></tr>
+                            <tr><td class="td-main"><code>icon</code></td><td>No</td><td>Single emoji, defaults to <code>🎨</code></td></tr>
+                            <tr><td class="td-main"><code>variables</code></td><td>Yes</td><td>JSON object of CSS variable overrides (see table above)</td></tr>
+                            <tr><td class="td-main"><code>custom_css</code></td><td>No</td><td>Optional raw CSS string for advanced overrides. Sanitized on the server — <code>@import</code>, <code>url()</code>, and script injection are stripped.</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+                <p>Publish or update via the API:</p>
+                <pre><code class="language-bash">curl -X POST https://codetrackr.leapcell.app/api/v1/themes/publish \
+  -H "Authorization: Bearer YOUR_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "name": "dracula-dark",
+    "display_name": "Dracula Dark",
+    "description": "A dark theme inspired by the Dracula palette.",
+    "version": "1.0.0",
+    "icon": "🧛",
+    "variables": {
+      "--bg": "#282a36",
+      "--bg-card": "#1e1f29",
+      "--bg-input": "#21222c",
+      "--bg-hover": "#44475a",
+      "--text-main": "#f8f8f2",
+      "--text-muted": "#6272a4",
+      "--text-dark": "#44475a",
+      "--border": "#44475a",
+      "--border-focus": "#6272a4",
+      "--accent": "#bd93f9"
+    }
+  }'</code></pre>
+                <p>Publishing with the same <code>name</code> performs an in-place update (upsert). Only the original publisher can overwrite their theme.</p>
+            </section>
+
+            <section id="themes-api">
+                <h2>Themes API Reference</h2>
+                <div class="table-wrapper">
+                    <table>
+                        <thead><tr><th>Method</th><th>Endpoint</th><th>Description</th></tr></thead>
+                        <tbody>
+                            <tr><td class="td-main"><code>GET</code></td><td><code>/api/v1/themes</code></td><td>List all published themes in the store</td></tr>
+                            <tr><td class="td-main"><code>POST</code></td><td><code>/api/v1/themes/publish</code></td><td>Publish or update a theme (auth required)</td></tr>
+                            <tr><td class="td-main"><code>GET</code></td><td><code>/api/v1/themes/installed</code></td><td>List themes installed by the authenticated user</td></tr>
+                            <tr><td class="td-main"><code>POST</code></td><td><code>/api/v1/themes/install/:id</code></td><td>Install a theme by UUID</td></tr>
+                            <tr><td class="td-main"><code>DELETE</code></td><td><code>/api/v1/themes/uninstall/:id</code></td><td>Uninstall a theme by UUID</td></tr>
+                            <tr><td class="td-main"><code>GET</code></td><td><code>/api/v1/themes/active</code></td><td>Get the active theme variables merged with custom overrides</td></tr>
+                            <tr><td class="td-main"><code>POST</code></td><td><code>/api/v1/themes/apply</code></td><td>Set active theme and/or custom variable overrides</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+                <h3>GET /api/v1/themes/active — response shape</h3>
+                <pre><code class="language-json">{
+  "active_theme_id": "uuid-or-null",
+  "theme_name": "dracula-dark",
+  "variables": {
+    "--bg": "#282a36",
+    "--accent": "#bd93f9"
+  }
+}</code></pre>
+                <p>The <code>variables</code> object is the result of merging the active theme's base variables with the user's <code>custom_vars</code> overrides. The dashboard applies these on every page load via <code>document.documentElement.style.setProperty()</code>.</p>
+            </section>
 
             <!-- ═══════════════════════════════════════════════════════════ -->
             <!-- UI FRAMEWORK                                               -->
@@ -1518,6 +1845,685 @@ button.onclick = async () => {
 };</code></pre>
             </section>
 
+            <!-- ══════════════════════════════════════════════════════════ -->
+            <!-- IDE COLOR PALETTE                                         -->
+            <!-- ══════════════════════════════════════════════════════════ -->
+
+            <section id="ide-colors">
+                <h2>IDE Color Palette</h2>
+                <p>Developer IDE colors based on each IDE's most dominant icon color.</p>
+                
+                <div class="ide-grid">
+                    <div class="ide-card" style="border-color: #fd27bc; color: #fd27bc;">Adobe XD<br><small>#fd27bc</small></div>
+                    <div class="ide-card" style="border-color: #99cd00; color: #99cd00;">Android Studio<br><small>#99cd00</small></div>
+                    <div class="ide-card" style="border-color: #3b8cec; color: #3b8cec;">Antigravity<br><small>#3b8cec</small></div>
+                    <div class="ide-card" style="border-color: #04dbde; color: #04dbde;">AppCode<br><small>#04dbde</small></div>
+                    <div class="ide-card" style="border-color: #ec8623; color: #ec8623;">Aptana<br><small>#ec8623</small></div>
+                    <div class="ide-card" style="border-color: #3ae868; color: #3ae868;">Aqua<br><small>#3ae868</small></div>
+                    <div class="ide-card" style="border-color: #048184; color: #048184;">Arduino IDE<br><small>#048184</small></div>
+                    <div class="ide-card" style="border-color: #49b77e; color: #49b77e;">Atom<br><small>#49b77e</small></div>
+                    <div class="ide-card" style="border-color: #0271c6; color: #0271c6;">Azure Data Studio<br><small>#0271c6</small></div>
+                    <div class="ide-card" style="border-color: #fb8007; color: #fb8007;">Blender<br><small>#fb8007</small></div>
+                    <div class="ide-card" style="border-color: #067dc3; color: #067dc3;">Brackets<br><small>#067dc3</small></div>
+                    <div class="ide-card" style="border-color: #fc500c; color: #fc500c;">Brave<br><small>#fc500c</small></div>
+                    <div class="ide-card" style="border-color: #8a1922; color: #8a1922;">C++ Builder<br><small>#8a1922</small></div>
+                    <div class="ide-card" style="border-color: #288bda; color: #288bda;">Canva<br><small>#288bda</small></div>
+                    <div class="ide-card" style="border-color: #fdd308; color: #fdd308;">Chrome<br><small>#fdd308</small></div>
+                    <div class="ide-card" style="border-color: #d97757; color: #d97757;">Claude Code<br><small>#d97757</small></div>
+                    <div class="ide-card" style="border-color: #14c9a5; color: #14c9a5;">CLion<br><small>#14c9a5</small></div>
+                    <div class="ide-card" style="border-color: #25a6d9; color: #25a6d9;">Cloud9<br><small>#25a6d9</small></div>
+                    <div class="ide-card" style="border-color: #3e8e1c; color: #3e8e1c;">Coda<br><small>#3e8e1c</small></div>
+                    <div class="ide-card" style="border-color: #7368a8; color: #7368a8;">CodeTasty<br><small>#7368a8</small></div>
+                    <div class="ide-card" style="border-color: #5a2894; color: #5a2894;">Cursor<br><small>#5a2894</small></div>
+                    <div class="ide-card" style="border-color: #907cf2; color: #907cf2;">DataGrip<br><small>#907cf2</small></div>
+                    <div class="ide-card" style="border-color: #087cfa; color: #087cfa;">DataSpell<br><small>#087cfa</small></div>
+                    <div class="ide-card" style="border-color: #897363; color: #897363;">DBeaver<br><small>#897363</small></div>
+                    <div class="ide-card" style="border-color: #db2129; color: #db2129;">Delphi<br><small>#db2129</small></div>
+                    <div class="ide-card" style="border-color: #5c64f4; color: #5c64f4;">Discord<br><small>#5c64f4</small></div>
+                    <div class="ide-card" style="border-color: #443582; color: #443582;">Eclipse<br><small>#443582</small></div>
+                    <div class="ide-card" style="border-color: #3acca9; color: #3acca9;">Edge<br><small>#3acca9</small></div>
+                    <div class="ide-card" style="border-color: #8c76c3; color: #8c76c3;">Emacs<br><small>#8c76c3</small></div>
+                    <div class="ide-card" style="border-color: #423f13; color: #423f13;">Eric<br><small>#423f13</small></div>
+                    <div class="ide-card" style="border-color: #0f753c; color: #0f753c;">Excel<br><small>#0f753c</small></div>
+                    <div class="ide-card" style="border-color: #c7b9ff; color: #c7b9ff;">Figma<br><small>#c7b9ff</small></div>
+                    <div class="ide-card" style="border-color: #d96527; color: #d96527;">Firefox<br><small>#d96527</small></div>
+                    <div class="ide-card" style="border-color: #aca3a4; color: #aca3a4;">Flash Builder<br><small>#aca3a4</small></div>
+                    <div class="ide-card" style="border-color: #fbec75; color: #fbec75;">Geany<br><small>#fbec75</small></div>
+                    <div class="ide-card" style="border-color: #872114; color: #872114;">Gedit<br><small>#872114</small></div>
+                    <div class="ide-card" style="border-color: #bd4ffc; color: #bd4ffc;">GoLand<br><small>#bd4ffc</small></div>
+                    <div class="ide-card" style="border-color: #1ba334; color: #1ba334;">HBuilder X<br><small>#1ba334</small></div>
+                    <div class="ide-card" style="border-color: #35c4c0; color: #35c4c0;">IDA Pro<br><small>#35c4c0</small></div>
+                    <div class="ide-card" style="border-color: #2876e1; color: #2876e1;">IntelliJ IDEA<br><small>#2876e1</small></div>
+                    <div class="ide-card" style="border-color: #f47822; color: #f47822;">Jupyter<br><small>#f47822</small></div>
+                    <div class="ide-card" style="border-color: #dd5f4a; color: #dd5f4a;">Kakoune<br><small>#dd5f4a</small></div>
+                    <div class="ide-card" style="border-color: #0b7aef; color: #0b7aef;">Kate<br><small>#0b7aef</small></div>
+                    <div class="ide-card" style="border-color: #fcb414; color: #fcb414;">Komodo<br><small>#fcb414</small></div>
+                    <div class="ide-card" style="border-color: #a127fc; color: #a127fc;">Maestro<br><small>#a127fc</small></div>
+                    <div class="ide-card" style="border-color: #2c3494; color: #2c3494;">Micro<br><small>#2c3494</small></div>
+                    <div class="ide-card" style="border-color: #12a8d5; color: #12a8d5;">MPS<br><small>#12a8d5</small></div>
+                    <div class="ide-card" style="border-color: #068304; color: #068304;">Neovim<br><small>#068304</small></div>
+                    <div class="ide-card" style="border-color: #aed43a; color: #aed43a;">NetBeans<br><small>#aed43a</small></div>
+                    <div class="ide-card" style="border-color: #9ecf54; color: #9ecf54;">Notepad++<br><small>#9ecf54</small></div>
+                    <div class="ide-card" style="border-color: #ff054a; color: #ff054a;">Nova<br><small>#ff054a</small></div>
+                    <div class="ide-card" style="border-color: #4a38a0; color: #4a38a0;">Obsidian<br><small>#4a38a0</small></div>
+                    <div class="ide-card" style="border-color: #ee848e; color: #ee848e;">Onivim<br><small>#ee848e</small></div>
+                    <div class="ide-card" style="border-color: #cfcfcf; color: #cfcfcf;">OpenCode<br><small>#cfcfcf</small></div>
+                    <div class="ide-card" style="border-color: #ff4119; color: #ff4119;">Oxygen<br><small>#ff4119</small></div>
+                    <div class="ide-card" style="border-color: #d93ac1; color: #d93ac1;">PhpStorm<br><small>#d93ac1</small></div>
+                    <div class="ide-card" style="border-color: #fc6b33; color: #fc6b33;">Postman<br><small>#fc6b33</small></div>
+                    <div class="ide-card" style="border-color: #c6421f; color: #c6421f;">PowerPoint<br><small>#c6421f</small></div>
+                    <div class="ide-card" style="border-color: #6a7152; color: #6a7152;">Processing<br><small>#6a7152</small></div>
+                    <div class="ide-card" style="border-color: #662d91; color: #662d91;">Pulsar<br><small>#662d91</small></div>
+                    <div class="ide-card" style="border-color: #d2ee5c; color: #d2ee5c;">PyCharm<br><small>#d2ee5c</small></div>
+                    <div class="ide-card" style="border-color: #323d4f; color: #323d4f;">Pymakr<br><small>#323d4f</small></div>
+                    <div class="ide-card" style="border-color: #B6C2E4; color: #B6C2E4;">ReClassEx<br><small>#B6C2E4</small></div>
+                    <div class="ide-card" style="border-color: #f7a415; color: #f7a415;">Rider<br><small>#f7a415</small></div>
+                    <div class="ide-card" style="border-color: #049cfc; color: #049cfc;">Roblox Studio<br><small>#049cfc</small></div>
+                    <div class="ide-card" style="border-color: #ff6336; color: #ff6336;">RubyMine<br><small>#ff6336</small></div>
+                    <div class="ide-card" style="border-color: #ff2f52; color: #ff2f52;">RustRover<br><small>#ff2f52</small></div>
+                    <div class="ide-card" style="border-color: #1399ef; color: #1399ef;">Safari<br><small>#1399ef</small></div>
+                    <div class="ide-card" style="border-color: #da3939; color: #da3939;">SiYuan<br><small>#da3939</small></div>
+                    <div class="ide-card" style="border-color: #fdad00; color: #fdad00;">Sketch<br><small>#fdad00</small></div>
+                    <div class="ide-card" style="border-color: #57ca57; color: #57ca57;">SlickEdit<br><small>#57ca57</small></div>
+                    <div class="ide-card" style="border-color: #ffb901; color: #ffb901;">SQL Server Management Studio<br><small>#ffb901</small></div>
+                    <div class="ide-card" style="border-color: #ff9800; color: #ff9800;">Sublime Text<br><small>#ff9800</small></div>
+                    <div class="ide-card" style="border-color: #133f1c; color: #133f1c;">Terminal<br><small>#133f1c</small></div>
+                    <div class="ide-card" style="border-color: #652d96; color: #652d96;">TeXstudio<br><small>#652d96</small></div>
+                    <div class="ide-card" style="border-color: #822b7a; color: #822b7a;">TextMate<br><small>#822b7a</small></div>
+                    <div class="ide-card" style="border-color: #ff4a36; color: #ff4a36;">Trae<br><small>#ff4a36</small></div>
+                    <div class="ide-card" style="border-color: #222d36; color: #222d36;">Unity<br><small>#222d36</small></div>
+                    <div class="ide-card" style="border-color: #068304; color: #068304;">Vim<br><small>#068304</small></div>
+                    <div class="ide-card" style="border-color: #9460cd; color: #9460cd;">Visual Studio<br><small>#9460cd</small></div>
+                    <div class="ide-card" style="border-color: #6185b3; color: #6185b3;">Visual Studio for Mac<br><small>#6185b3</small></div>
+                    <div class="ide-card" style="border-color: #027acd; color: #027acd;">VS Code<br><small>#027acd</small></div>
+                    <div class="ide-card" style="border-color: #00c6d7; color: #00c6d7;">WebStorm<br><small>#00c6d7</small></div>
+                    <div class="ide-card" style="border-color: #58e5bc; color: #58e5bc;">Windsurf<br><small>#58e5bc</small></div>
+                    <div class="ide-card" style="border-color: #b3b3b3; color: #b3b3b3;">Wing<br><small>#b3b3b3</small></div>
+                    <div class="ide-card" style="border-color: #0f4091; color: #0f4091;">Word<br><small>#0f4091</small></div>
+                    <div class="ide-card" style="border-color: #3598db; color: #3598db;">Xamarin<br><small>#3598db</small></div>
+                    <div class="ide-card" style="border-color: #3fa7e4; color: #3fa7e4;">Xcode<br><small>#3fa7e4</small></div>
+                    <div class="ide-card" style="border-color: #0754c6; color: #0754c6;">Zed<br><small>#0754c6</small></div>
+                    <div class="ide-card" style="border-color: #5d89af; color: #5d89af;">Aqua Data Studio<br><small>#5d89af</small></div>
+                    <div class="ide-card" style="border-color: #d0ce71; color: #d0ce71;">BlueJ<br><small>#d0ce71</small></div>
+                    <div class="ide-card" style="border-color: #1892e5; color: #1892e5;">Code::Blocks<br><small>#1892e5</small></div>
+                    <div class="ide-card" style="border-color: #1892e5; color: #1892e5;">CodeLite<br><small>#1892e5</small></div>
+                    <div class="ide-card" style="border-color: #ed3103; color: #ed3103;">EmEditor<br><small>#ed3103</small></div>
+                    <div class="ide-card" style="border-color: #8d76cc; color: #8d76cc;">Helix<br><small>#8d76cc</small></div>
+                    <div class="ide-card" style="border-color: #22a273; color: #22a273;">KDevelop<br><small>#22a273</small></div>
+                    <div class="ide-card" style="border-color: #007ac1; color: #007ac1;">Light Table<br><small>#007ac1</small></div>
+                    <div class="ide-card" style="border-color: #4da0df; color: #4da0df;">Espresso<br><small>#4da0df</small></div>
+                    <div class="ide-card" style="border-color: #245279; color: #245279;">MySQL Workbench<br><small>#245279</small></div>
+                    <div class="ide-card" style="border-color: #0a0054; color: #0a0054;">Photoshop<br><small>#0a0054</small></div>
+                    <div class="ide-card" style="border-color: #7fc342; color: #7fc342;">QtCreator<br><small>#7fc342</small></div>
+                    <div class="ide-card" style="border-color: #2369c7; color: #2369c7;">RStudio<br><small>#2369c7</small></div>
+                    <div class="ide-card" style="border-color: #ee181e; color: #ee181e;">Spyder<br><small>#ee181e</small></div>
+                    <div class="ide-card" style="border-color: #aeaeae; color: #aeaeae;">WebMatrix<br><small>#aeaeae</small></div>
+                    <div class="ide-card" style="border-color: #fc6143; color: #fc6143;">WPS Office<br><small>#fc6143</small></div>
+                    <div class="ide-card" style="border-color: #c12625; color: #c12625;">Zotero<br><small>#c12625</small></div>
+                </div>
+            </section>
+
+            <!-- ══════════════════════════════════════════════════════════ -->
+            <!-- API REFERENCE                                             -->
+            <!-- ══════════════════════════════════════════════════════════ -->
+
+            <section id="api-intro">
+                <h2>API Reference — Introduction</h2>
+                <p>The CodeTrackr API follows REST conventions. Use <code>GET</code> to retrieve data and <code>POST</code> or <code>DELETE</code> to modify it. All requests must be made over HTTPS.</p>
+                <p>Every response is a JSON object. Errors are returned under the key <code>error</code>.</p>
+
+                <h3>Base URL</h3>
+                <pre><code>https://codetrackr.leapcell.app/api/v1</code></pre>
+
+                <h3>HTTP Status Codes</h3>
+                <div class="table-wrapper">
+                    <table>
+                        <thead><tr><th>Code</th><th>Meaning</th></tr></thead>
+                        <tbody>
+                            <tr><td class="td-main"><code>200</code></td><td>OK — request succeeded.</td></tr>
+                            <tr><td class="td-main"><code>201</code></td><td>Created — resource created successfully.</td></tr>
+                            <tr><td class="td-main"><code>400</code></td><td>Bad Request — check the error message and try again.</td></tr>
+                            <tr><td class="td-main"><code>401</code></td><td>Unauthorized — authentication missing or invalid.</td></tr>
+                            <tr><td class="td-main"><code>403</code></td><td>Forbidden — authenticated but not permitted.</td></tr>
+                            <tr><td class="td-main"><code>404</code></td><td>Not Found — the resource does not exist.</td></tr>
+                            <tr><td class="td-main"><code>500</code></td><td>Server Error — try again later.</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+            </section>
+
+            <section id="api-auth">
+                <h2>Authentication</h2>
+                <p>All authenticated endpoints accept one of the following methods.</p>
+
+                <h3>API Key (recommended for IDE plugins)</h3>
+                <p>Generate a key from your dashboard and pass it in the <code>X-API-Key</code> header:</p>
+                <pre><code>X-API-Key: ct_xxxxxxxxxxxxxxxxxxxx</code></pre>
+                <p>Alternatively, use the query parameter: <code>?api_key=ct_xxx</code></p>
+
+                <h3>Bearer Token (OAuth / JWT)</h3>
+                <p>After logging in via GitHub or GitLab, a JWT is issued. Pass it in the <code>Authorization</code> header:</p>
+                <pre><code>Authorization: Bearer &lt;your_jwt&gt;</code></pre>
+
+                <h3>OAuth Login URLs</h3>
+                <div class="table-wrapper">
+                    <table>
+                        <thead><tr><th>Provider</th><th>URL</th></tr></thead>
+                        <tbody>
+                            <tr><td class="td-main">GitHub</td><td><code>GET /auth/github</code></td></tr>
+                            <tr><td class="td-main">GitLab</td><td><code>GET /auth/gitlab</code></td></tr>
+                            <tr><td class="td-main">Logout</td><td><code>POST /auth/logout</code></td></tr>
+                        </tbody>
+                    </table>
+                </div>
+
+                <h3>API Key Limits</h3>
+                <p>Each user may hold up to <strong>5 active API keys</strong>. Keys can be managed via the <a href="#api-keys">API Keys</a> endpoints or from the dashboard UI. The full key value is only shown once at creation time.</p>
+
+                <h3>Security</h3>
+                <p>Do <strong>not</strong> use your API key in public client-side JavaScript. For dashboard widgets use the <code>token</code> argument provided by the plugin runtime, which is always scoped to the authenticated user.</p>
+            </section>
+
+            <!-- ── HEARTBEAT ──────────────────────────────────────────── -->
+            <section id="api-heartbeat">
+                <h2>Heartbeat</h2>
+                <p><code>POST /api/v1/heartbeat</code></p>
+                <p>Records a single coding activity event. IDE plugins call this endpoint continuously as you code.</p>
+
+                <h3>Authentication Required</h3>
+                <p><code>X-API-Key</code> or <code>Authorization: Bearer</code></p>
+
+                <h3>JSON Body</h3>
+                <div class="table-wrapper">
+                    <table>
+                        <thead><tr><th>Field</th><th>Type</th><th>Required</th><th>Description</th></tr></thead>
+                        <tbody>
+                            <tr><td class="td-main"><code>project</code></td><td>string</td><td>Yes</td><td>Project or workspace name</td></tr>
+                            <tr><td class="td-main"><code>file</code></td><td>string</td><td>No</td><td>Relative file path</td></tr>
+                            <tr><td class="td-main"><code>lang</code></td><td>string</td><td>No</td><td>Language identifier, e.g. <code>rust</code>, <code>typescript</code></td></tr>
+                            <tr><td class="td-main"><code>branch</code></td><td>string</td><td>No</td><td>Git branch name</td></tr>
+                            <tr><td class="td-main"><code>commit</code></td><td>string</td><td>No</td><td>Git commit SHA</td></tr>
+                            <tr><td class="td-main"><code>workspace_root</code></td><td>string</td><td>No</td><td>Workspace root path or remote URL</td></tr>
+                            <tr><td class="td-main"><code>package_path</code></td><td>string</td><td>No</td><td>Monorepo sub-package path</td></tr>
+                            <tr><td class="td-main"><code>duration</code></td><td>integer</td><td>No</td><td>Duration in seconds (default: <code>30</code>)</td></tr>
+                            <tr><td class="td-main"><code>is_write</code></td><td>boolean</td><td>No</td><td>Whether the event was a file save (default: <code>false</code>)</td></tr>
+                            <tr><td class="td-main"><code>editor</code></td><td>string</td><td>No</td><td>Editor name, e.g. <code>VS Code</code>, <code>Neovim</code></td></tr>
+                            <tr><td class="td-main"><code>os</code></td><td>string</td><td>No</td><td>Operating system, e.g. <code>macOS</code>, <code>Linux</code></td></tr>
+                            <tr><td class="td-main"><code>machine</code></td><td>string</td><td>No</td><td>Machine identifier</td></tr>
+                            <tr><td class="td-main"><code>time</code></td><td>float</td><td>No</td><td>Unix timestamp. Defaults to server time if omitted</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+
+                <h3>Example Request</h3>
+                <pre><code class="language-bash">curl -X POST https://codetrackr.leapcell.app/api/v1/heartbeat \
+  -H "X-API-Key: ct_xxxxxxxxxxxxxxxxxxxx" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "project": "core-engine",
+    "file": "src/main.rs",
+    "lang": "rust",
+    "branch": "main",
+    "editor": "VS Code",
+    "os": "macOS",
+    "duration": 60,
+    "is_write": true
+  }'</code></pre>
+
+                <h3>Example Response</h3>
+                <p>Response Code: <code>200</code></p>
+                <pre><code class="language-json">{
+  "status": "ok",
+  "recorded_at": "2026-03-09T19:00:00Z"
+}</code></pre>
+            </section>
+
+            <!-- ── HEARTBEATS BULK ─────────────────────────────────────── -->
+            <section id="api-heartbeats-bulk">
+                <h2>Heartbeats Bulk</h2>
+                <p><code>POST /api/v1/heartbeats</code></p>
+                <p>Creates multiple heartbeats in a single request. Ideal for offline sync or data imports. Duplicate entries are silently ignored.</p>
+
+                <h3>Authentication Required</h3>
+                <p><code>X-API-Key</code> or <code>Authorization: Bearer</code></p>
+
+                <h3>JSON Body</h3>
+                <p>An array of heartbeat objects using the same fields as the single <a href="#api-heartbeat">Heartbeat</a> endpoint.</p>
+
+                <h3>Example Request</h3>
+                <pre><code class="language-bash">curl -X POST https://codetrackr.leapcell.app/api/v1/heartbeats \
+  -H "X-API-Key: ct_xxxxxxxxxxxxxxxxxxxx" \
+  -H "Content-Type: application/json" \
+  -d '[
+    { "project": "core-engine", "lang": "rust", "duration": 60, "time": 1741276680 },
+    { "project": "dashboard-ui", "lang": "typescript", "duration": 120, "time": 1741276800 }
+  ]'</code></pre>
+
+                <h3>Example Response</h3>
+                <p>Response Code: <code>200</code></p>
+                <pre><code class="language-json">{
+  "status": "ok",
+  "inserted": 2
+}</code></pre>
+            </section>
+
+            <!-- ── STATS SUMMARY ──────────────────────────────────────── -->
+            <section id="api-stats-summary">
+                <h2>Stats — Summary</h2>
+                <p><code>GET /api/v1/stats/summary</code></p>
+                <p>Aggregate coding stats for the authenticated user over a given time range, including streak info and top language/project.</p>
+
+                <h3>Authentication Required</h3>
+                <p><code>X-API-Key</code> or <code>Authorization: Bearer</code></p>
+
+                <h3>Query Parameters</h3>
+                <div class="table-wrapper">
+                    <table>
+                        <thead><tr><th>Parameter</th><th>Type</th><th>Description</th></tr></thead>
+                        <tbody>
+                            <tr><td class="td-main"><code>range</code></td><td>string</td><td>Preset range: <code>7d</code> (default), <code>30d</code>, <code>90d</code>, <code>all</code></td></tr>
+                            <tr><td class="td-main"><code>start</code></td><td>ISO 8601</td><td>Custom range start (overrides <code>range</code>)</td></tr>
+                            <tr><td class="td-main"><code>end</code></td><td>ISO 8601</td><td>Custom range end (overrides <code>range</code>)</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+
+                <h3>Example Response</h3>
+                <p>Response Code: <code>200</code></p>
+                <pre><code class="language-json">{
+  "total_seconds": &lt;integer: total seconds in range&gt;,
+  "daily_average": &lt;integer: average seconds per day&gt;,
+  "streak_current": &lt;integer: current consecutive coding days&gt;,
+  "streak_longest": &lt;integer: longest streak ever recorded&gt;,
+  "top_language": &lt;string|null: most-used language&gt;,
+  "top_project": &lt;string|null: most-active project&gt;,
+  "range_start": &lt;string: ISO 8601 UTC start datetime&gt;,
+  "range_end": &lt;string: ISO 8601 UTC end datetime&gt;
+}</code></pre>
+
+                <h3>Public Platform Stats</h3>
+                <p><code>GET /api/v1/stats/public</code> — No authentication required.</p>
+                <pre><code class="language-json">{
+  "users": &lt;integer: number of public users&gt;,
+  "total_seconds": &lt;integer: all-time seconds across all users&gt;
+}</code></pre>
+            </section>
+
+            <!-- ── STATS LANGUAGES ────────────────────────────────────── -->
+            <section id="api-stats-languages">
+                <h2>Stats — Languages</h2>
+                <p><code>GET /api/v1/stats/languages</code></p>
+                <p>Language breakdown with total seconds and percentage share.</p>
+
+                <h3>Authentication Required</h3>
+                <p><code>X-API-Key</code> or <code>Authorization: Bearer</code></p>
+
+                <h3>Query Parameters</h3>
+                <p>Same as <a href="#api-stats-summary">Stats Summary</a>: <code>range</code>, <code>start</code>, <code>end</code>.</p>
+
+                <h3>Example Response</h3>
+                <p>Response Code: <code>200</code></p>
+                <pre><code class="language-json">{
+  "total_seconds": &lt;integer&gt;,
+  "languages": [
+    {
+      "language": &lt;string: language name&gt;,
+      "seconds": &lt;integer: total seconds in this language&gt;,
+      "percentage": &lt;float: percent share of total time, e.g. 62.3&gt;
+    },
+    ...
+  ]
+}</code></pre>
+            </section>
+
+            <!-- ── STATS PROJECTS ─────────────────────────────────────── -->
+            <section id="api-stats-projects">
+                <h2>Stats — Projects</h2>
+                <p><code>GET /api/v1/stats/projects</code></p>
+                <p>Time per project with the timestamp of the most recent heartbeat.</p>
+
+                <h3>Authentication Required</h3>
+                <p><code>X-API-Key</code> or <code>Authorization: Bearer</code></p>
+
+                <h3>Query Parameters</h3>
+                <p>Same as <a href="#api-stats-summary">Stats Summary</a>: <code>range</code>, <code>start</code>, <code>end</code>.</p>
+
+                <h3>Example Response</h3>
+                <p>Response Code: <code>200</code></p>
+                <pre><code class="language-json">{
+  "projects": [
+    {
+      "project": &lt;string: project name&gt;,
+      "seconds": &lt;integer: total seconds on this project&gt;,
+      "last_heartbeat": &lt;string: ISO 8601 UTC datetime of most recent heartbeat&gt;
+    },
+    ...
+  ]
+}</code></pre>
+            </section>
+
+            <!-- ── STATS DAILY ────────────────────────────────────────── -->
+            <section id="api-stats-daily">
+                <h2>Stats — Daily</h2>
+                <p><code>GET /api/v1/stats/daily</code></p>
+                <p>Per-day seconds array segmented by calendar date. Useful for rendering activity bar charts in plugins.</p>
+
+                <h3>Authentication Required</h3>
+                <p><code>X-API-Key</code> or <code>Authorization: Bearer</code></p>
+
+                <h3>Query Parameters</h3>
+                <p>Same as <a href="#api-stats-summary">Stats Summary</a>: <code>range</code>, <code>start</code>, <code>end</code>.</p>
+
+                <h3>Example Response</h3>
+                <p>Response Code: <code>200</code></p>
+                <pre><code class="language-json">{
+  "daily": [
+    {
+      "date": &lt;string: date in YYYY-MM-DD format&gt;,
+      "seconds": &lt;integer: total seconds on this day&gt;
+    },
+    ...
+  ]
+}</code></pre>
+            </section>
+
+            <!-- ── STATS STREAKS ──────────────────────────────────────── -->
+            <section id="api-stats-streaks">
+                <h2>Stats — Streaks</h2>
+                <p><code>GET /api/v1/stats/streaks</code></p>
+                <p>Current and longest consecutive coding day streaks for the authenticated user.</p>
+
+                <h3>Authentication Required</h3>
+                <p><code>X-API-Key</code> or <code>Authorization: Bearer</code></p>
+
+                <h3>Example Response</h3>
+                <p>Response Code: <code>200</code></p>
+                <pre><code class="language-json">{
+  "current_streak": &lt;integer: consecutive days ending today or yesterday&gt;,
+  "longest_streak": &lt;integer: longest streak ever recorded for this user&gt;
+}</code></pre>
+            </section>
+
+            <!-- ── LEADERBOARDS ───────────────────────────────────────── -->
+            <section id="api-leaderboards">
+                <h2>Leaderboards</h2>
+                <p>Public leaderboards ranked by coding activity for the current week. <strong>No authentication required.</strong></p>
+
+                <h3>Global Leaderboard</h3>
+                <p><code>GET /api/v1/leaderboards/global</code></p>
+
+                <h4>Query Parameters</h4>
+                <div class="table-wrapper">
+                    <table>
+                        <thead><tr><th>Parameter</th><th>Type</th><th>Description</th></tr></thead>
+                        <tbody>
+                            <tr><td class="td-main"><code>limit</code></td><td>integer</td><td>Max entries to return (default: <code>100</code>, max: <code>500</code>)</td></tr>
+                            <tr><td class="td-main"><code>offset</code></td><td>integer</td><td>Pagination offset (default: <code>0</code>)</td></tr>
+                            <tr><td class="td-main"><code>country</code></td><td>string</td><td>Filter by two-letter country code, e.g. <code>US</code>, <code>MX</code></td></tr>
+                            <tr><td class="td-main"><code>available_for_hire</code></td><td>boolean</td><td>When <code>true</code>, only show users available for hire</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+
+                <h4>Example Response</h4>
+                <p>Response Code: <code>200</code></p>
+                <pre><code class="language-json">{
+  "leaderboard": [
+    {
+      "rank": &lt;integer: position in leaderboard&gt;,
+      "user_id": &lt;string: UUID&gt;,
+      "username": &lt;string: public username&gt;,
+      "display_name": &lt;string|null&gt;,
+      "avatar_url": &lt;string|null&gt;,
+      "country": &lt;string|null: two-letter code&gt;,
+      "seconds": &lt;integer: total seconds coded this week&gt;,
+      "top_language": &lt;string|null: most-used language&gt;,
+      "top_editor": &lt;string|null: most-used editor&gt;,
+      "top_os": &lt;string|null: most-used operating system&gt;
+    },
+    ...
+  ],
+  "week": &lt;string: ISO week identifier, e.g. 2026-W10&gt;,
+  "updated_at": &lt;string: ISO 8601 UTC datetime&gt;
+}</code></pre>
+
+                <h3>Leaderboard by Language</h3>
+                <p><code>GET /api/v1/leaderboards/language/:lang</code></p>
+                <p>Same structure as global, filtered to users who coded in <code>:lang</code> this week. Accepts <code>limit</code>, <code>offset</code>, <code>country</code>.</p>
+
+                <h3>Leaderboard by Country</h3>
+                <p><code>GET /api/v1/leaderboards/country/:country</code></p>
+                <p>Delegates to global with a forced <code>country</code> filter. Accepts <code>limit</code> and <code>offset</code>.</p>
+            </section>
+
+            <!-- ── USERS ──────────────────────────────────────────────── -->
+            <section id="api-users">
+                <h2>Users</h2>
+
+                <h3>Current User</h3>
+                <p><code>GET /api/v1/user/me</code></p>
+                <p>Returns the authenticated user's full private profile.</p>
+                <h4>Authentication Required</h4>
+                <p><code>X-API-Key</code> or <code>Authorization: Bearer</code></p>
+                <h4>Example Response</h4>
+                <p>Response Code: <code>200</code></p>
+                <pre><code class="language-json">{
+  "id": &lt;string: UUID&gt;,
+  "username": &lt;string&gt;,
+  "display_name": &lt;string|null&gt;,
+  "email": &lt;string|null&gt;,
+  "avatar_url": &lt;string|null&gt;,
+  "plan": &lt;string: "free" | "pro"&gt;,
+  "is_public": &lt;boolean&gt;,
+  "is_admin": &lt;boolean&gt;,
+  "bio": &lt;string|null&gt;,
+  "website": &lt;string|null&gt;,
+  "profile_show_languages": &lt;boolean&gt;,
+  "profile_show_projects": &lt;boolean&gt;,
+  "profile_show_activity": &lt;boolean&gt;,
+  "profile_show_plugins": &lt;boolean&gt;,
+  "profile_show_streak": &lt;boolean&gt;,
+  "available_for_hire": &lt;boolean&gt;,
+  "country": &lt;string|null&gt;,
+  "timezone": &lt;string: Olson format, e.g. America/Mexico_City&gt;,
+  "created_at": &lt;string: ISO 8601 UTC datetime&gt;
+}</code></pre>
+
+                <h3>Update Profile</h3>
+                <p><code>POST /api/v1/user/profile/update</code></p>
+                <p>Updates the authenticated user's profile. Only provided fields are changed; omitted fields keep their current values.</p>
+                <h4>Authentication Required</h4>
+                <p><code>X-API-Key</code> or <code>Authorization: Bearer</code></p>
+                <h4>JSON Body (all fields optional)</h4>
+                <div class="table-wrapper">
+                    <table>
+                        <thead><tr><th>Field</th><th>Type</th><th>Description</th></tr></thead>
+                        <tbody>
+                            <tr><td class="td-main"><code>bio</code></td><td>string</td><td>Short user bio</td></tr>
+                            <tr><td class="td-main"><code>website</code></td><td>string</td><td>Personal website URL (must start with <code>http://</code> or <code>https://</code>)</td></tr>
+                            <tr><td class="td-main"><code>is_public</code></td><td>boolean</td><td>Whether profile is publicly visible</td></tr>
+                            <tr><td class="td-main"><code>profile_show_languages</code></td><td>boolean</td><td>Show languages on public profile</td></tr>
+                            <tr><td class="td-main"><code>profile_show_projects</code></td><td>boolean</td><td>Show projects on public profile</td></tr>
+                            <tr><td class="td-main"><code>profile_show_activity</code></td><td>boolean</td><td>Show weekly activity on public profile</td></tr>
+                            <tr><td class="td-main"><code>profile_show_plugins</code></td><td>boolean</td><td>Show published plugins on public profile</td></tr>
+                            <tr><td class="td-main"><code>profile_show_streak</code></td><td>boolean</td><td>Show streak on public profile</td></tr>
+                            <tr><td class="td-main"><code>available_for_hire</code></td><td>boolean</td><td>Display the hireable badge on profile</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+                <h4>Example Response</h4>
+                <pre><code class="language-json">{ "status": "updated" }</code></pre>
+
+                <h3>Public Profile</h3>
+                <p><code>GET /api/v1/user/profile/:username</code></p>
+                <p>Returns the public profile of any user with <code>is_public = true</code>. Stats sections respect the user's individual visibility settings.</p>
+                <h4>Example Response</h4>
+                <p>Response Code: <code>200</code></p>
+                <pre><code class="language-json">{
+  "username": &lt;string&gt;,
+  "display_name": &lt;string|null&gt;,
+  "avatar_url": &lt;string|null&gt;,
+  "bio": &lt;string|null&gt;,
+  "website": &lt;string|null&gt;,
+  "country": &lt;string|null&gt;,
+  "plan": &lt;string&gt;,
+  "member_since": &lt;string: ISO 8601 UTC datetime&gt;,
+  "follower_count": &lt;integer&gt;,
+  "following_count": &lt;integer&gt;,
+  "available_for_hire": &lt;boolean&gt;,
+  "weekly_seconds": &lt;integer: 0 if hidden by user&gt;,
+  "streak_days": &lt;integer: 0 if hidden by user&gt;,
+  "languages": &lt;array|[]: top languages if show_languages is true&gt;,
+  "projects": &lt;array|[]: top projects if show_projects is true&gt;,
+  "plugins": &lt;array|[]: published plugins if show_plugins is true&gt;
+}</code></pre>
+
+                <h3>Follow / Unfollow</h3>
+                <div class="table-wrapper">
+                    <table>
+                        <thead><tr><th>Method</th><th>Endpoint</th><th>Description</th></tr></thead>
+                        <tbody>
+                            <tr><td class="td-main"><code>POST</code></td><td><code>/api/v1/user/follow/:username</code></td><td>Follow a user</td></tr>
+                            <tr><td class="td-main"><code>DELETE</code></td><td><code>/api/v1/user/unfollow/:username</code></td><td>Unfollow a user</td></tr>
+                            <tr><td class="td-main"><code>GET</code></td><td><code>/api/v1/user/following/:username</code></td><td>Check if you follow a user</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+                <p>All three require authentication. You cannot follow yourself — the API returns <code>400</code> if attempted.</p>
+                <h4>Following Check Response</h4>
+                <pre><code class="language-json">{ "following": &lt;boolean&gt; }</code></pre>
+
+                <h3>SVG Badge</h3>
+                <p><code>GET /api/v1/user/badge/:username/:lang</code></p>
+                <p>Returns an SVG badge showing the user's coding time for a specific language over the last 7 days. Safe to embed in GitHub READMEs — no authentication required.</p>
+                <pre><code class="language-markdown">![CodeTrackr Rust](https://codetrackr.leapcell.app/api/v1/user/badge/yourname/rust)</code></pre>
+
+                <h3>Contact Developer</h3>
+                <p><code>POST /api/v1/user/contact/:username</code></p>
+                <p>Sends a hire inquiry to a user who has <code>available_for_hire = true</code> and a public profile. The message is stored in the database.</p>
+                <h4>JSON Body</h4>
+                <div class="table-wrapper">
+                    <table>
+                        <thead><tr><th>Field</th><th>Required</th><th>Description</th></tr></thead>
+                        <tbody>
+                            <tr><td class="td-main"><code>name</code></td><td>Yes</td><td>Sender's name</td></tr>
+                            <tr><td class="td-main"><code>email</code></td><td>Yes</td><td>Sender's email address</td></tr>
+                            <tr><td class="td-main"><code>message</code></td><td>Yes</td><td>Message body (max 2000 characters)</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+                <h4>Example Response</h4>
+                <pre><code class="language-json">{ "status": "sent" }</code></pre>
+            </section>
+
+            <!-- ── API KEYS ───────────────────────────────────────────── -->
+            <section id="api-keys">
+                <h2>API Keys</h2>
+                <p>Manage your API keys programmatically. The full key value is only shown once at creation time and cannot be retrieved again.</p>
+                <p>Limit: <strong>5 keys per user</strong>.</p>
+
+                <h3>List Keys</h3>
+                <p><code>GET /api/v1/keys</code></p>
+                <h4>Authentication Required</h4>
+                <p><code>Authorization: Bearer</code></p>
+                <h4>Example Response</h4>
+                <p>Response Code: <code>200</code></p>
+                <pre><code class="language-json">{
+  "keys": [
+    {
+      "id": &lt;string: UUID&gt;,
+      "name": &lt;string: key label&gt;,
+      "key_prefix": &lt;string: first 12 characters for identification&gt;,
+      "last_used_at": &lt;string|null: ISO 8601 UTC datetime&gt;,
+      "created_at": &lt;string: ISO 8601 UTC datetime&gt;
+    },
+    ...
+  ]
+}</code></pre>
+
+                <h3>Create Key</h3>
+                <p><code>POST /api/v1/keys</code></p>
+                <h4>Authentication Required</h4>
+                <p><code>Authorization: Bearer</code></p>
+                <h4>JSON Body</h4>
+                <div class="table-wrapper">
+                    <table>
+                        <thead><tr><th>Field</th><th>Required</th><th>Description</th></tr></thead>
+                        <tbody>
+                            <tr><td class="td-main"><code>name</code></td><td>No</td><td>Human-readable label. Defaults to <code>Key #N</code></td></tr>
+                        </tbody>
+                    </table>
+                </div>
+                <h4>Example Response</h4>
+                <p>Response Code: <code>200</code></p>
+                <pre><code class="language-json">{
+  "key": {
+    "id": &lt;string: UUID&gt;,
+    "name": &lt;string&gt;,
+    "key": &lt;string: full key — only shown once, store securely&gt;,
+    "created_at": &lt;string: ISO 8601 UTC datetime&gt;
+  }
+}</code></pre>
+
+                <h3>Delete Key</h3>
+                <p><code>DELETE /api/v1/keys/:id</code></p>
+                <p>Permanently deletes the API key with the given UUID. Only the owner can delete their own keys.</p>
+                <h4>Authentication Required</h4>
+                <p><code>Authorization: Bearer</code></p>
+                <h4>Example Response</h4>
+                <pre><code class="language-json">{ "message": "API key deleted" }</code></pre>
+            </section>
+
+            <!-- ── EXPORT ─────────────────────────────────────────────── -->
+            <section id="api-export">
+                <h2>Export</h2>
+                <p>Export your full coding history. Both formats include all heartbeats the authenticated user has recorded.</p>
+
+                <h3>Export as JSON</h3>
+                <p><code>GET /api/v1/export/json</code></p>
+                <p>Returns a JSON array of all heartbeats. Authentication required.</p>
+                <pre><code class="language-bash">curl https://codetrackr.leapcell.app/api/v1/export/json \
+  -H "X-API-Key: ct_xxxxxxxxxxxxxxxxxxxx" \
+  -o my-data.json</code></pre>
+
+                <h3>Export as CSV</h3>
+                <p><code>GET /api/v1/export/csv</code></p>
+                <p>Returns a CSV file with one heartbeat per row. Authentication required.</p>
+                <pre><code class="language-bash">curl https://codetrackr.leapcell.app/api/v1/export/csv \
+  -H "X-API-Key: ct_xxxxxxxxxxxxxxxxxxxx" \
+  -o my-data.csv</code></pre>
+            </section>
+
+            <!-- ── BILLING ────────────────────────────────────────────── -->
+            <section id="api-billing">
+                <h2>Billing</h2>
+                <p>Manage the Pro subscription via Stripe. All endpoints require <code>Authorization: Bearer</code>.</p>
+
+                <h3>Billing Status</h3>
+                <p><code>GET /api/v1/billing/status</code></p>
+                <p>Returns the current subscription plan and expiry date for the authenticated user.</p>
+                <pre><code class="language-json">{
+  "plan": &lt;string: "free" | "pro"&gt;,
+  "plan_expires_at": &lt;string|null: ISO 8601 UTC datetime&gt;,
+  "stripe_customer_id": &lt;string|null&gt;,
+  "stripe_subscription_id": &lt;string|null&gt;
+}</code></pre>
+
+                <h3>Create Checkout Session</h3>
+                <p><code>POST /api/v1/billing/checkout</code></p>
+                <p>Creates a Stripe Checkout session and returns the redirect URL to complete payment.</p>
+                <pre><code class="language-json">{ "url": &lt;string: Stripe Checkout URL&gt; }</code></pre>
+
+                <h3>Customer Portal</h3>
+                <p><code>POST /api/v1/billing/portal</code></p>
+                <p>Creates a Stripe Customer Portal session for managing or cancelling the subscription.</p>
+                <pre><code class="language-json">{ "url": &lt;string: Stripe Portal URL&gt; }</code></pre>
+
+                <h3>Billing Config</h3>
+                <p><code>GET /api/v1/billing/config</code></p>
+                <p>Returns the public Stripe publishable key and price metadata needed to render the upgrade UI.</p>
+            </section>
+
             <div class="docs-footer">
                 © 2026 CodeTrackr Contributors. Data Privacy Guaranteed.
             </div>
@@ -1550,6 +2556,113 @@ button.onclick = async () => {
         }, { rootMargin: '-20% 0px -70% 0px' });
 
         sections.forEach(s => observer.observe(s));
+    </script>
+
+    <script>
+        // Mapa de IDEs a posibles nombres de repositorios
+        const ideRepoMap = {
+            "VS Code": ["codetrackr-vscode", "vscode-codetrackr"],
+            "IntelliJ IDEA": ["codetrackr-intellij", "intellij-codetrackr"],
+            "Neovim": ["codetrackr-neovim", "neovim-codetrackr"],
+            "Vim": ["codetrackr-vim", "vim-codetrackr"],
+            "Cursor": ["codetrackr-cursor", "cursor-codetrackr"],
+            "Windsurf": ["codetrackr-windsurf", "windsurf-codetrackr"],
+            "CLion": ["codetrackr-clion", "clion-codetrackr"],
+            "WebStorm": ["codetrackr-webstorm", "webstorm-codetrackr"],
+            "Eclipse": ["codetrackr-eclipse", "eclipse-codetrackr"],
+            "Sublime Text": ["codetrackr-sublime", "sublime-codetrackr"],
+            "Xcode": ["codetrackr-xcode", "xcode-codetrackr"],
+            "Android Studio": ["codetrackr-androidstudio", "androidstudio-codetrackr"]
+        };
+
+        async function checkExtensions() {
+            const grid = document.getElementById('ide-grid');
+            if (!grid) return;
+
+            // Limpiar contenido actual
+            grid.innerHTML = '<div style="text-align:center; padding:20px; color:var(--text-muted);">Cargando...</div>';
+
+            try {
+                // Obtener repositorios de GitHub
+                const githubResponse = await fetch('https://api.github.com/users/livrasand/repos?per_page=100');
+                const githubRepos = await githubResponse.json();
+                const githubRepoNames = githubRepos.map(repo => repo.name.toLowerCase());
+
+                // Obtener repositorios de GitLab (si existe cuenta)
+                let gitlabRepoNames = [];
+                try {
+                    const gitlabResponse = await fetch('https://gitlab.com/api/v4/users/livrasand/projects?per_page=100');
+                    const gitlabRepos = await gitlabResponse.json();
+                    gitlabRepoNames = gitlabRepos.map(repo => repo.name.toLowerCase());
+                } catch (e) {
+                    // GitLab puede no tener cuenta o fallar
+                    console.log('No se pudo acceder a repositorios de GitLab:', e);
+                }
+
+                const allRepoNames = [...githubRepoNames, ...gitlabRepoNames];
+
+                // Generar contenido dinámico
+                let html = '';
+                for (const [ide, repos] of Object.entries(ideRepoMap)) {
+                    const hasExtension = repos.some(repo => allRepoNames.includes(repo.toLowerCase()));
+                    const status = hasExtension ? 'Disponible' : 'Próximamente';
+                    const statusClass = hasExtension ? 'available' : 'coming-soon';
+                    html += `
+                        <div class="ide-card">
+                            ${ide}
+                            <span class="extension-status ${statusClass}">${status}</span>
+                        </div>
+                    `;
+                }
+
+                grid.innerHTML = html;
+
+                // Agregar estilos para los estados
+                if (!document.getElementById('extension-styles')) {
+                    const style = document.createElement('style');
+                    style.id = 'extension-styles';
+                    style.textContent = `
+                        .extension-status {
+                            font-size: 10px;
+                            padding: 2px 6px;
+                            border-radius: 10px;
+                            margin-left: 8px;
+                            font-weight: bold;
+                            text-transform: uppercase;
+                        }
+                        .extension-status.available {
+                            background: #22c55e;
+                            color: white;
+                        }
+                        .extension-status.coming-soon {
+                            background: #f59e0b;
+                            color: white;
+                        }
+                    `;
+                    document.head.appendChild(style);
+                }
+
+            } catch (error) {
+                console.error('Error al verificar extensiones:', error);
+                grid.innerHTML = `
+                    <div class="ide-card">VS Code</div>
+                    <div class="ide-card">IntelliJ IDEA</div>
+                    <div class="ide-card">Neovim</div>
+                    <div class="ide-card">Vim</div>
+                    <div class="ide-card">Cursor</div>
+                    <div class="ide-card">Windsurf</div>
+                    <div class="ide-card">CLion</div>
+                    <div class="ide-card">WebStorm</div>
+                    <div class="ide-card">Eclipse</div>
+                    <div class="ide-card">Sublime Text</div>
+                    <div class="ide-card">Xcode</div>
+                    <div class="ide-card">Android Studio</div>
+                `;
+            }
+        }
+
+        // Ejecutar al cargar la página
+        document.addEventListener('DOMContentLoaded', checkExtensions);
     </script>
 
 </body>

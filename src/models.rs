@@ -1,5 +1,3 @@
-#![allow(dead_code)]
-
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 use chrono::{DateTime, Utc};
@@ -28,12 +26,14 @@ pub struct User {
     pub profile_show_activity: bool,
     pub profile_show_plugins: bool,
     pub profile_show_streak: bool,
+    pub available_for_hire: bool,
     pub country: Option<String>,
     pub timezone: String,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
 }
 
+#[allow(dead_code)]
 #[derive(Debug, Serialize, Deserialize)]
 pub struct PublicUser {
     pub id: Uuid,
@@ -91,6 +91,7 @@ pub struct ApiKeyCreated {
 
 // ── Heartbeat ───────────────────────────────────────────────────────────────
 
+#[allow(dead_code)]
 #[derive(Debug, Clone, Serialize, Deserialize, sqlx::FromRow)]
 pub struct Heartbeat {
     pub id: Uuid,
@@ -131,6 +132,7 @@ pub struct HeartbeatRequest {
 
 // ── Stats ────────────────────────────────────────────────────────────────────
 
+#[allow(dead_code)]
 #[derive(Debug, Serialize, Deserialize)]
 pub struct DailyStat {
     pub date: chrono::NaiveDate,
@@ -146,6 +148,7 @@ pub struct LanguageStat {
     pub percentage: f64,
 }
 
+#[allow(dead_code)]
 #[derive(Debug, Serialize, Deserialize)]
 pub struct ProjectStat {
     pub project: String,
@@ -154,6 +157,7 @@ pub struct ProjectStat {
     pub languages: Vec<String>,
 }
 
+#[allow(dead_code)]
 #[derive(Debug, Serialize, Deserialize)]
 pub struct Summary {
     pub total_seconds: i64,
@@ -170,6 +174,7 @@ pub struct Summary {
 
 // ── Leaderboard ──────────────────────────────────────────────────────────────
 
+#[allow(dead_code)]
 #[derive(Debug, Serialize, Deserialize)]
 pub struct LeaderboardEntry {
     pub rank: i64,

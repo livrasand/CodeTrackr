@@ -97,16 +97,24 @@ async fn main() -> anyhow::Result<()> {
     // Realtime events will flow seamlessly through the local Tokio broadcast channel instead.
     // realtime::start_redis_subscriber(redis_url.clone()).await;
 
-    let allowed_origin: tower_http::cors::AllowOrigin = state.config.frontend_url
-        .parse::<axum::http::HeaderValue>()
-        .map(tower_http::cors::AllowOrigin::exact)
-        .unwrap_or_else(|_| tower_http::cors::AllowOrigin::any());
-
+    let frontend_url = state.config.frontend_url.clone();
     let cors = CorsLayer::new()
-        .allow_origin(allowed_origin)
+        .allow_origin(tower_http::cors::AllowOrigin::predicate(
+            move |origin: &axum::http::HeaderValue, _: &axum::http::request::Parts| {
+                let Ok(s) = origin.to_str() else { return false; };
+                // Permitir cualquier localhost/127.0.0.1 (cualquier puerto) + FRONTEND_URL configurado
+                s.starts_with("http://localhost:")
+                    || s.starts_with("https://localhost:")
+                    || s.starts_with("http://127.0.0.1:")
+                    || s.starts_with("https://127.0.0.1:")
+                    || s == frontend_url
+            },
+        ))
         .allow_methods([
             axum::http::Method::GET,
             axum::http::Method::POST,
+            axum::http::Method::PUT,
+            axum::http::Method::PATCH,
             axum::http::Method::DELETE,
             axum::http::Method::OPTIONS,
         ])
@@ -115,7 +123,8 @@ async fn main() -> anyhow::Result<()> {
             axum::http::header::CONTENT_TYPE,
             "X-API-Key".parse::<axum::http::HeaderName>().unwrap(),
         ])
-        .allow_credentials(true);
+        .allow_credentials(true)
+        .max_age(std::time::Duration::from_secs(3600));
 
     // Build plugin router (must be done here, inside async context)
     let plugin_router = {
@@ -133,6 +142,7 @@ async fn main() -> anyhow::Result<()> {
         // ── Static frontend ──────────────────────────────────────────────
         .nest_service("/static", tower_http::services::ServeDir::new("static"))
         .route("/docs", get(api::frontend::serve_docs))
+        .route("/plugin-store", get(api::frontend::serve_plugin_store))
         .route("/cteditor", get(api::cteditor::serve_editor))
         .route("/u/:username", get(api::frontend::serve_index))
         // SPA fallback
@@ -169,6 +179,8 @@ fn api_routes(state: AppState, plugin_router: Router<AppState>) -> Router<AppSta
         .route("/stats/projects", get(api::stats::get_projects))
         .route("/stats/daily", get(api::stats::get_daily))
         .route("/stats/streaks", get(api::stats::get_streaks))
+        .route("/stats/work-types", get(api::stats::get_work_types))
+        .route("/stats/sessions", get(api::stats::get_sessions))
         // Leaderboards
         .route("/leaderboards/global", get(api::leaderboards::get_global))
         .route("/leaderboards/language/:lang", get(api::leaderboards::get_by_language))
@@ -190,6 +202,7 @@ fn api_routes(state: AppState, plugin_router: Router<AppState>) -> Router<AppSta
         .route("/user/following/:username", get(api::users::is_following))
         .route("/user/badge/:username/:lang", get(api::users::get_badge))
         .route("/user/profile/:username", get(api::users::get_public_profile))
+        .route("/user/contact/:username", post(api::users::contact_dev))
         // Plugin editor sandbox
         .route("/cteditor/run", post(api::cteditor::run_plugin))
         // Plugin RPC — user-defined endpoints inside store plugin scripts
@@ -204,6 +217,14 @@ fn api_routes(state: AppState, plugin_router: Router<AppState>) -> Router<AppSta
         .route("/plugins/panels", get(plugins::get_dashboard_manifests))
         .route("/dashboard/order", post(api::dashboard::save_dashboard_order))
         .nest("/plugins", plugin_router)
+        // Theme store
+        .route("/themes", get(api::themes::list_themes))
+        .route("/themes/publish", post(api::themes::publish_theme))
+        .route("/themes/install/:id", post(api::themes::install_theme))
+        .route("/themes/uninstall/:id", delete(api::themes::uninstall_theme))
+        .route("/themes/installed", get(api::themes::get_installed_themes))
+        .route("/themes/active", get(api::themes::get_active_theme))
+        .route("/themes/apply", post(api::themes::apply_theme))
         // Plugin store
         .route("/store", get(api::store::list_store_plugins))
         .route("/store/publish", post(api::store::publish_plugin))

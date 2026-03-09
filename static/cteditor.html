@@ -425,6 +425,13 @@
         <input class="meta-input" id="metaRepository" type="text" placeholder="https://github.com/..." autocomplete="off">
       </div>
       <div class="meta-field">
+        <label class="meta-label" for="metaPluginType">Plugin Type</label>
+        <select class="meta-input" id="metaPluginType" onchange="onMetaPluginTypeChange(this.value)">
+          <option value="widget">widget</option>
+          <option value="lifecycle">lifecycle</option>
+        </select>
+      </div>
+      <div class="meta-field" id="metaWidgetTypeRow">
         <label class="meta-label" for="metaWidgetType">Widget Type</label>
         <select class="meta-input" id="metaWidgetType">
           <option value="counter">counter</option>
@@ -711,7 +718,22 @@ async function runCode() {
 
 // ── Metadata helpers ────────────────────────────────────────────────────────
 
+function onMetaPluginTypeChange(type) {
+  const isLifecycle = type === 'lifecycle';
+  const row = document.getElementById('metaWidgetTypeRow');
+  if (row) row.style.display = isLifecycle ? 'none' : '';
+  // Ocultar trigger 'widget' en la trigger bar si es lifecycle
+  const widgetTrigger = document.querySelector('.trigger-btn[data-trigger="widget"]');
+  if (widgetTrigger) widgetTrigger.style.display = isLifecycle ? 'none' : '';
+  if (isLifecycle && currentTrigger === 'widget') {
+    const firstBtn = document.querySelector('.trigger-btn[data-trigger="on_heartbeat"]');
+    if (firstBtn) selectTrigger(firstBtn);
+  }
+}
+
 function getMeta() {
+  const pluginType = document.getElementById('metaPluginType').value;
+  const isLifecycle = pluginType === 'lifecycle';
   return {
     name:         document.getElementById('metaName').value.trim(),
     display_name: document.getElementById('metaDisplayName').value.trim(),
@@ -719,7 +741,8 @@ function getMeta() {
     icon:         document.getElementById('metaIcon').value.trim() || '🔌',
     description:  document.getElementById('metaDescription').value.trim() || null,
     repository:   document.getElementById('metaRepository').value.trim() || null,
-    widget_type:  document.getElementById('metaWidgetType').value,
+    plugin_type:  pluginType,
+    widget_type:  isLifecycle ? null : document.getElementById('metaWidgetType').value,
   };
 }
 
@@ -731,6 +754,9 @@ function setMeta(meta) {
   document.getElementById('metaIcon').value        = meta.icon         || '';
   document.getElementById('metaDescription').value = meta.description  || '';
   document.getElementById('metaRepository').value  = meta.repository   || '';
+  const pluginType = meta.plugin_type || 'widget';
+  document.getElementById('metaPluginType').value = pluginType;
+  onMetaPluginTypeChange(pluginType);
   if (meta.widget_type) {
     document.getElementById('metaWidgetType').value = meta.widget_type;
   }

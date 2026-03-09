@@ -26,7 +26,8 @@ sqlx = { version = "0.7", features = ["runtime-tokio-rustls", "postgres", "uuid"
 uuid = { version = "1", features = ["v4", "serde"] }
 
 # Redis
-redis = { version = "0.24", features = ["tokio-comp", "tokio-rustls-comp", "connection-manager", "aio"] }
+redis = { version = "0.25", features = ["tokio-comp", "tokio-rustls-comp", "connection-manager", "aio"] }
+deadpool-redis = { version = "0.15", features = ["rt_tokio_1"] }
 
 # Auth
 jsonwebtoken = "9"
@@ -55,6 +56,7 @@ rquickjs = { version = "0.9", features = ["full"] }
 base64 = "0.21"
 tower_governor = { version = "0.4", features = ["axum"] }
 rust_decimal = { version = "1", features = ["serde-with-str"] }
+regex = "1"
 
 [profile.release]
 opt-level = 3

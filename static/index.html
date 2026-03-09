@@ -20,10 +20,11 @@
       <ul class="nav-links">
         <li><a href="/#stats" class="nav-link">Stats</a></li>
         <li><a href="/#leaderboard" class="nav-link">Leaderboard</a></li>
+        <li><a href="/#build" class="nav-link">Build</a></li>
         <li><a href="/docs" class="nav-link">Docs</a></li>
         <li id="nav-auth-item"><a href="/auth/github" class="nav-link">Login</a></li>
         <li id="nav-user-item" style="display:none;">
-          <a href="javascript:void(0)" onclick="showProfile()" class="nav-user-pill">
+          <a href="javascript:void(0)" onclick="showDashboard()" class="nav-user-pill">
             <img id="nav-avatar" src="" alt="" style="width:24px; height:24px; border-radius:50%; margin-right:8px;">
             <span id="nav-username"></span>
           </a>
@@ -80,9 +81,14 @@
     <div class="container">
       <div class="section-header" style="display:flex; justify-content:space-between; align-items:baseline;">
         <h2 class="section-title" style="margin:0;">Leaderboard</h2>
-        <div class="lb-controls" style="display:flex; gap:16px;" id="lb-tabs">
-          <button class="code-tab active" data-tab="global">Global</button>
-          <span style="font-size:10px; color:var(--text-dark); margin-left:8px;">● Live</span>
+        <div style="display:flex; align-items:center; gap:16px; flex-wrap:wrap;">
+          <div class="lb-controls" style="display:flex; gap:16px;" id="lb-tabs">
+            <button class="code-tab active" data-tab="global">Global</button>
+            <span style="font-size:10px; color:var(--text-dark); margin-left:8px;">● Live</span>
+          </div>
+          <label style="display:flex; align-items:center; gap:6px; font-size:11px; color:var(--text-dark); cursor:pointer; margin-left:8px;">
+            <input type="checkbox" id="lb-filter-hire" onchange="applyLeaderboardHireFilter(this)"> Available for hire
+          </label>
         </div>
       </div>
 
@@ -171,7 +177,7 @@
         <div class="card">
           <h3>🔌 Build Your Own Plugin</h3>
           <p>Write a JavaScript snippet and publish it to the Plugin Store. Your panel appears on every installer's dashboard — no server needed.</p>
-          <a href="/docs#creating-plugins" style="font-size:12px; color:var(--text-dark);">Read the guide →</a>
+          <a href="/docs#widget-plugins" style="font-size:12px; color:var(--text-dark);">Read the guide →</a>
         </div>
         <div class="card">
           <h3>🛠 IDE Extension for Any Editor</h3>
@@ -187,6 +193,90 @@
   </section>
 
 
+  <!-- BUILD WITH CODETRACKR -->
+  <section class="section" id="build">
+    <div class="container">
+      <div class="section-header">
+        <h2 class="section-title">Build with CodeTrackr</h2>
+        <p class="section-desc">Extend the platform your way — ship a dashboard plugin or publish an IDE extension for any editor in minutes.</p>
+      </div>
+
+      <div class="grid-2" style="margin-bottom:40px;">
+        <!-- Plugin card -->
+        <div class="card" style="display:flex; flex-direction:column; gap:16px;">
+          <div style="display:flex; align-items:center; gap:12px;">
+            <span style="font-size:28px; line-height:1;">🔌</span>
+            <div>
+              <h3 style="margin:0; font-size:15px;">Dashboard Plugins</h3>
+              <span style="font-size:11px; color:var(--text-dark);">Runs in the browser · No server required</span>
+            </div>
+          </div>
+          <p style="font-size:13px; color:var(--text-muted); line-height:1.6; margin:0;">Write a plain JavaScript snippet that receives a <code>container</code> DOM element and your <code>token</code>. Fetch any CodeTrackr API endpoint, render charts, tables, or counters — and publish it to the Plugin Store so anyone can install it on their dashboard with one click.</p>
+          <div style="display:flex; flex-direction:column; gap:6px;">
+            <div style="font-size:11px; color:var(--text-dark); text-transform:uppercase; letter-spacing:.05em;">What you can build</div>
+            <div style="display:flex; flex-wrap:wrap; gap:6px;">
+              <span class="key-hint" style="font-size:11px;">📊 Custom charts</span>
+              <span class="key-hint" style="font-size:11px;">🔥 Streak widgets</span>
+              <span class="key-hint" style="font-size:11px;">🗂 Project trackers</span>
+              <span class="key-hint" style="font-size:11px;">⏱ Goal timers</span>
+              <span class="key-hint" style="font-size:11px;">🤝 Team boards</span>
+            </div>
+          </div>
+          <div style="display:flex; gap:8px; margin-top:auto;">
+            <a href="/cteditor" class="btn" style="font-size:12px; padding:5px 14px;">Open Plugin Editor</a>
+            <a href="/docs#widget-plugins" style="font-size:12px; color:var(--text-dark); display:flex; align-items:center;">Read the docs →</a>
+          </div>
+        </div>
+
+        <!-- IDE Extension card -->
+        <div class="card" style="display:flex; flex-direction:column; gap:16px;">
+          <div style="display:flex; align-items:center; gap:12px;">
+            <span style="font-size:28px; line-height:1;">🛠</span>
+            <div>
+              <h3 style="margin:0; font-size:15px;">IDE Extensions</h3>
+              <span style="font-size:11px; color:var(--text-dark);">Any editor · One HTTP request</span>
+            </div>
+          </div>
+          <p style="font-size:13px; color:var(--text-muted); line-height:1.6; margin:0;">The CodeTrackr API is WakaTime-compatible. If your editor can make an HTTP POST, it can send heartbeats. Build an extension for VS Code, Neovim, IntelliJ, Zed, Emacs, Helix — or any tool you use — and track your activity without changing anything else.</p>
+          <div style="display:flex; flex-direction:column; gap:6px;">
+            <div style="font-size:11px; color:var(--text-dark); text-transform:uppercase; letter-spacing:.05em;">One endpoint, full tracking</div>
+            <pre style="margin:0; font-size:11px; background:var(--bg); border:1px solid var(--border); border-radius:var(--radius-sm); padding:8px 10px; overflow:auto;"><code>POST /api/v1/heartbeat
+X-API-Key: ct_your_key
+{ "project": "my-app", "lang": "rust" }</code></pre>
+          </div>
+          <div style="display:flex; gap:8px; margin-top:auto;">
+            <a href="/docs#creating-extensions" class="btn" style="font-size:12px; padding:5px 14px;">View API Reference</a>
+            <a href="/docs#creating-ide-plugins" style="font-size:12px; color:var(--text-dark); display:flex; align-items:center;">Plugin guide →</a>
+          </div>
+        </div>
+      </div>
+
+      <!-- Steps row -->
+      <div style="display:grid; grid-template-columns:repeat(auto-fit,minmax(180px,1fr)); gap:16px;">
+        <div style="border-left:2px solid var(--border-focus); padding-left:16px;">
+          <div style="font-size:11px; color:var(--text-dark); text-transform:uppercase; letter-spacing:.05em; margin-bottom:4px;">Step 1</div>
+          <div style="font-size:13px; color:var(--text-main); font-weight:500; margin-bottom:4px;">Get an API key</div>
+          <div style="font-size:12px; color:var(--text-muted);">Log in and generate a key in Settings → API Keys.</div>
+        </div>
+        <div style="border-left:2px solid var(--border-focus); padding-left:16px;">
+          <div style="font-size:11px; color:var(--text-dark); text-transform:uppercase; letter-spacing:.05em; margin-bottom:4px;">Step 2</div>
+          <div style="font-size:13px; color:var(--text-main); font-weight:500; margin-bottom:4px;">Write your code</div>
+          <div style="font-size:12px; color:var(--text-muted);">Use the Plugin Editor for dashboard scripts or your own IDE for extensions.</div>
+        </div>
+        <div style="border-left:2px solid var(--border-focus); padding-left:16px;">
+          <div style="font-size:11px; color:var(--text-dark); text-transform:uppercase; letter-spacing:.05em; margin-bottom:4px;">Step 3</div>
+          <div style="font-size:13px; color:var(--text-main); font-weight:500; margin-bottom:4px;">Publish &amp; share</div>
+          <div style="font-size:12px; color:var(--text-muted);">Push your plugin to the store. The community can install it instantly.</div>
+        </div>
+        <div style="border-left:2px solid var(--border-focus); padding-left:16px;">
+          <div style="font-size:11px; color:var(--text-dark); text-transform:uppercase; letter-spacing:.05em; margin-bottom:4px;">Step 4</div>
+          <div style="font-size:13px; color:var(--text-main); font-weight:500; margin-bottom:4px;">Iterate</div>
+          <div style="font-size:12px; color:var(--text-muted);">Update in-place — no reinstall needed. All users get your changes automatically.</div>
+        </div>
+      </div>
+    </div>
+  </section>
+
   <!-- DASHBOARD -->
   <section class="section hidden" id="dashboard">
     <div class="container">
@@ -200,6 +290,7 @@
         </div>
         <div style="display:flex; align-items:center; gap:16px;">
           <span style="font-size:12px; color:var(--text-muted);">@<span id="dash-username"></span></span>
+          <a href="/plugin-store" class="nav-link" style="font-size:12px; padding:4px 12px;" >Plugin Store</a>
           <span id="dash-pro-badge" style="display:none; font-size:11px; color:var(--text-dark);" class="key-hint">★ Pro</span>
           <button id="btn-upgrade-pro" onclick="startCheckout(this)" style="display:none; font-size:12px; padding:4px 12px;" class="btn">★ Upgrade to Pro</button>
           <button class="btn" onclick="logout()" style="color:var(--text-dark); font-size:12px; padding:4px 12px;">Logout</button>
@@ -240,6 +331,31 @@
         </div>
       </div>
 
+      <!-- Projects -->
+      <div class="card" style="margin-bottom:32px;">
+        <h3 style="font-size:12px; text-transform:uppercase; color:var(--text-dark); margin-bottom:12px;">Projects (7d)</h3>
+        <div id="dash-projects-list"><span style="font-size:12px; color:var(--text-muted);">—</span></div>
+      </div>
+
+      <!-- Work Types + Sessions -->
+      <div class="grid-2" style="margin-bottom:32px;">
+        <!-- Work Type Breakdown -->
+        <div class="card" id="dash-work-types-card">
+          <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;">
+            <h3 style="font-size:12px; text-transform:uppercase; color:var(--text-dark); margin:0;">Work Type (7d)</h3>
+          </div>
+          <div id="dash-work-types-bars"><span style="font-size:12px; color:var(--text-muted);">—</span></div>
+        </div>
+        <!-- Coding Sessions -->
+        <div class="card" id="dash-sessions-card">
+          <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;">
+            <h3 style="font-size:12px; text-transform:uppercase; color:var(--text-dark); margin:0;">Recent Sessions</h3>
+            <span id="dash-sessions-count" style="font-size:11px; color:var(--text-dark);"></span>
+          </div>
+          <div id="dash-sessions-list"><span style="font-size:12px; color:var(--text-muted);">—</span></div>
+        </div>
+      </div>
+
       <!-- API Key -->
       <div class="card" style="margin-bottom:32px;">
         <h3 style="font-size:12px; text-transform:uppercase; color:var(--text-dark); margin-bottom:12px;">API Key</h3>
@@ -253,42 +369,7 @@
       <!-- Plugin Panels (installed) -->
       <div id="dash-plugins" style="display:grid; gap:16px; margin-bottom:32px;"></div>
 
-      <!-- PLUGIN STORE -->
-      <div id="plugin-store" style="margin-bottom:32px;">
-        <div style="display:flex; justify-content:space-between; align-items:baseline; margin-bottom:16px;">
-          <div>
-            <h2 class="section-title">Plugin Store</h2>
-            <p class="section-desc">Community-built plugins for the CodeTrackr web platform.</p>
-          </div>
-          <div class="lb-controls" style="display:flex; gap:16px; align-items:center;" id="store-controls">
-            <button class="btn" id="btn-publish-plugin" style="display:none; padding:4px 12px; font-size:12px;" onclick="openPublishModal()">+ Publish Plugin</button>
-            <a href="/cteditor" target="_blank" class="btn" id="btn-open-editor" style="display:none; padding:4px 12px; font-size:12px;">Plugin Editor</a>
-          </div>
-        </div>
-        <div class="grid-3" id="plugin-store-grid">
-          <!-- store plugins injected here -->
-          <div style="color:var(--text-muted); padding: 16px;">Loading plugins...</div>
-        </div>
-      </div>
 
-      <!-- Admin Panel (only shown if user is admin) -->
-      <div id="admin-panel" style="display:none; margin-bottom:32px;">
-        <div class="card">
-          <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:16px;">
-            <h3 style="font-size:12px; text-transform:uppercase; color:var(--text-dark); margin:0;">Admin — Plugin Store</h3>
-            <div style="display:flex; gap:8px;">
-              <button class="code-tab active" onclick="adminShowTab('plugins', this)">All Plugins</button>
-              <button class="code-tab" onclick="adminShowTab('reports', this)">Reports <span id="admin-reports-badge" style="display:none; background:var(--red,#e53); color:#fff; border-radius:99px; padding:0 6px; font-size:10px; margin-left:4px;">0</span></button>
-            </div>
-          </div>
-          <div id="admin-tab-plugins">
-            <div id="admin-plugins-list" style="display:flex; flex-direction:column; gap:8px;"></div>
-          </div>
-          <div id="admin-tab-reports" style="display:none;">
-            <div id="admin-reports-list" style="display:flex; flex-direction:column; gap:8px;"></div>
-          </div>
-        </div>
-      </div>
 
       <!-- Public Profile Settings -->
       <div class="card" style="margin-bottom:32px;" id="profile-settings-card">
@@ -314,6 +395,7 @@
           <label style="display:flex; align-items:center; gap:6px; font-size:12px; cursor:pointer;"><input type="checkbox" id="ptog-languages" onchange="saveProfileSettings()"> Languages</label>
           <label style="display:flex; align-items:center; gap:6px; font-size:12px; cursor:pointer;"><input type="checkbox" id="ptog-projects" onchange="saveProfileSettings()"> Projects</label>
           <label style="display:flex; align-items:center; gap:6px; font-size:12px; cursor:pointer;"><input type="checkbox" id="ptog-plugins" onchange="saveProfileSettings()"> Plugins</label>
+          <label style="display:flex; align-items:center; gap:6px; font-size:12px; cursor:pointer;"><input type="checkbox" id="ptog-hire" onchange="saveProfileSettings()"> Available for hire</label>
         </div>
         <button class="btn" style="font-size:12px;" onclick="saveProfileSettings()">Save Profile</button>
         <span id="profile-save-status" style="font-size:11px; color:var(--accent); margin-left:10px; display:none;">Saved!</span>
@@ -381,9 +463,47 @@
         <div class="grid-3" id="pp-plugins-grid"></div>
       </div>
 
-      <button class="btn" style="font-size:12px; color:var(--text-dark);" onclick="closePublicProfile()">← Back</button>
+      <!-- Available for Hire badge (conditional) -->
+      <div id="pp-hire-section" style="display:none; margin-bottom:16px;">
+        <span style="display:inline-flex; align-items:center; gap:6px; font-size:12px; background:var(--accent); color:#fff; border-radius:var(--radius-sm); padding:4px 10px; font-weight:600;">✦ Available for hire</span>
+      </div>
+
+      <!-- Actions row: always visible -->
+      <div style="display:flex; align-items:center; gap:8px; margin-bottom:24px; flex-wrap:wrap;">
+        <button class="btn" style="font-size:12px;" id="pp-contact-btn" onclick="openContactModal()">✉ Contact</button>
+        <button class="btn" style="font-size:12px; color:var(--text-dark);" onclick="closePublicProfile()">← Back</button>
+      </div>
     </div>
   </section>
+
+  <!-- HIRE CONTACT MODAL -->
+  <div id="hire-contact-modal" style="display:none; position:fixed; inset:0; z-index:1000; background:rgba(0,0,0,0.55); align-items:center; justify-content:center;" onclick="if(event.target===this)closeContactModal()">
+    <div class="card" style="width:100%; max-width:420px; margin:16px;" onclick="event.stopPropagation()">
+      <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:16px;">
+        <h3 style="margin:0; font-size:14px;">Contact developer</h3>
+        <button onclick="closeContactModal()" style="background:none; border:none; color:var(--text-muted); font-size:18px; cursor:pointer; line-height:1;">×</button>
+      </div>
+      <div style="display:flex; flex-direction:column; gap:10px;">
+        <div>
+          <label style="font-size:11px; color:var(--text-dark); display:block; margin-bottom:4px;">Your name</label>
+          <input id="hire-contact-name" type="text" placeholder="Jane Doe" style="width:100%; background:var(--bg); border:1px solid var(--border); color:var(--text-main); padding:6px 10px; font-size:12px; border-radius:var(--radius-sm); box-sizing:border-box;">
+        </div>
+        <div>
+          <label style="font-size:11px; color:var(--text-dark); display:block; margin-bottom:4px;">Your email</label>
+          <input id="hire-contact-email" type="email" placeholder="jane@company.com" style="width:100%; background:var(--bg); border:1px solid var(--border); color:var(--text-main); padding:6px 10px; font-size:12px; border-radius:var(--radius-sm); box-sizing:border-box;">
+        </div>
+        <div>
+          <label style="font-size:11px; color:var(--text-dark); display:block; margin-bottom:4px;">Message</label>
+          <textarea id="hire-contact-message" rows="4" placeholder="Tell them about the opportunity…" style="width:100%; background:var(--bg); border:1px solid var(--border); color:var(--text-main); padding:6px 10px; font-size:12px; border-radius:var(--radius-sm); box-sizing:border-box; resize:vertical;"></textarea>
+        </div>
+        <div style="display:flex; justify-content:flex-end; gap:8px; margin-top:4px;">
+          <button class="btn" style="font-size:12px; color:var(--text-dark);" onclick="closeContactModal()">Cancel</button>
+          <button class="btn" style="font-size:12px;" id="hire-contact-submit" onclick="submitContactDev()">Send</button>
+        </div>
+        <div id="hire-contact-status" style="font-size:11px; display:none;"></div>
+      </div>
+    </div>
+  </div>
 
 
   <!-- PRICING -->
@@ -701,7 +821,7 @@
     </div>
   </div>
 
-  <script src="/static/js/app.js?v=4"></script>
+  <script src="/static/js/app.js?v=5"></script>
   <script>
     document.addEventListener('keydown', (e) => {
       // Don't trigger if user is typing in an input

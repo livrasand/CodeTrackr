@@ -15,6 +15,7 @@ pub struct LeaderboardQuery {
     pub limit: Option<i64>,
     pub offset: Option<i64>,
     pub country: Option<String>,
+    pub available_for_hire: Option<bool>,
 }
 
 pub async fn get_global(
@@ -25,21 +26,20 @@ pub async fn get_global(
     let offset = q.offset.unwrap_or(0);
     let week_key = format!("lb:week:{}", chrono::Utc::now().format("%Y-W%W"));
 
-    let mut entries: Vec<(String, f64)> = if let Ok(mut guard) = state.redis.get_conn().await {
-        if let Some(conn) = guard.as_mut() {
-            redis::cmd("ZREVRANGEBYSCORE")
-                .arg(&week_key)
-                .arg("+inf")
-                .arg("-inf")
-                .arg("WITHSCORES")
-                .arg("LIMIT")
-                .arg(offset)
-                .arg(limit)
-                .query_async(conn)
-                .await
-                .unwrap_or_default()
-        } else { vec![] }
-    } else { vec![] };
+    let mut entries: Vec<(String, f64)> = match state.redis.get_conn().await {
+        Ok(mut conn) => redis::cmd("ZREVRANGEBYSCORE")
+            .arg(&week_key)
+            .arg("+inf")
+            .arg("-inf")
+            .arg("WITHSCORES")
+            .arg("LIMIT")
+            .arg(offset)
+            .arg(limit)
+            .query_async(&mut conn)
+            .await
+            .unwrap_or_default(),
+        Err(_) => vec![],
+    };
 
     // Fallback to DB when Redis has no data for this week
     if entries.is_empty() {
@@ -71,7 +71,7 @@ pub async fn get_global(
     for (i, (user_id_str, score)) in entries.iter().enumerate() {
         if let Ok(uid) = user_id_str.parse::<Uuid>() {
             let row = sqlx::query(
-                "SELECT id, username, display_name, avatar_url, country FROM users WHERE id = $1 AND is_public = true"
+                "SELECT id, username, display_name, avatar_url, country, available_for_hire FROM users WHERE id = $1 AND is_public = true"
             )
             .bind(uid)
             .fetch_optional(&state.db.pool)
@@ -86,6 +86,10 @@ pub async fn get_global(
                     if user_country.as_deref() != Some(country_filter.as_str()) {
                         continue;
                     }
+                }
+                let user_available_for_hire: bool = user.get("available_for_hire");
+                if q.available_for_hire == Some(true) && !user_available_for_hire {
+                    continue;
                 }
                 let top_language: Option<String> = sqlx::query_scalar(
                     r#"SELECT language FROM heartbeats WHERE user_id = $1 AND language IS NOT NULL GROUP BY language ORDER BY SUM(duration_seconds) DESC LIMIT 1"#
@@ -134,21 +138,20 @@ pub async fn get_by_language(
     let offset = q.offset.unwrap_or(0);
     let week_key = format!("lb:lang:{}:{}", lang.to_lowercase(), chrono::Utc::now().format("%Y-W%W"));
 
-    let entries: Vec<(String, f64)> = if let Ok(mut guard) = state.redis.get_conn().await {
-        if let Some(conn) = guard.as_mut() {
-            redis::cmd("ZREVRANGEBYSCORE")
-                .arg(&week_key)
-                .arg("+inf")
-                .arg("-inf")
-                .arg("WITHSCORES")
-                .arg("LIMIT")
-                .arg(offset)
-                .arg(limit)
-                .query_async(conn)
-                .await
-                .unwrap_or_default()
-        } else { vec![] }
-    } else { vec![] };
+    let entries: Vec<(String, f64)> = match state.redis.get_conn().await {
+        Ok(mut conn) => redis::cmd("ZREVRANGEBYSCORE")
+            .arg(&week_key)
+            .arg("+inf")
+            .arg("-inf")
+            .arg("WITHSCORES")
+            .arg("LIMIT")
+            .arg(offset)
+            .arg(limit)
+            .query_async(&mut conn)
+            .await
+            .unwrap_or_default(),
+        Err(_) => vec![],
+    };
 
     let mut leaderboard = Vec::new();
     for (i, (user_id_str, score)) in entries.iter().enumerate() {
@@ -215,6 +218,7 @@ pub async fn get_by_country(
             limit: q.limit,
             offset: q.offset,
             country: Some(country),
+            available_for_hire: q.available_for_hire,
         }),
     ).await
 }
