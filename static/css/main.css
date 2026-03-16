@@ -558,3 +558,155 @@ pre {
 .nav-user-pill:hover {
   border-color: var(--text-muted);
 }
+
+/* ── Responsive ──────────────────────────────────────────────────────────── */
+
+.nav-toggle {
+  display: none;
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 4px;
+  color: var(--text-muted);
+  flex-direction: column;
+  gap: 5px;
+}
+
+.nav-toggle span {
+  display: block;
+  width: 18px;
+  height: 2px;
+  background: currentColor;
+  transition: all var(--transition);
+}
+
+@media (max-width: 768px) {
+  .grid-3 {
+    grid-template-columns: repeat(2, 1fr);
+  }
+
+  .section {
+    padding: 56px 0;
+  }
+
+  .hero {
+    padding: 80px 0;
+  }
+
+  .hero-logo-big {
+    font-size: 36px;
+  }
+}
+
+@media (max-width: 600px) {
+  .container {
+    padding: 0 16px;
+  }
+
+  .nav {
+    padding: 20px 0;
+  }
+
+  .nav-toggle {
+    display: flex;
+  }
+
+  .nav-inner {
+    flex-wrap: wrap;
+  }
+
+  .nav-links {
+    display: none;
+    flex-direction: column;
+    gap: 16px;
+    padding: 16px 0 4px;
+    width: 100%;
+  }
+
+  .nav-links.open {
+    display: flex;
+  }
+
+  .grid-3 {
+    grid-template-columns: 1fr;
+  }
+
+  .grid-2 {
+    grid-template-columns: 1fr;
+  }
+
+  .section {
+    padding: 40px 0;
+  }
+
+  .hero {
+    padding: 56px 0;
+  }
+
+  .hero-logo-big {
+    font-size: 28px;
+  }
+
+  .section-title {
+    font-size: 18px;
+  }
+
+  .letter-inner {
+    padding: 24px;
+  }
+
+  .letter-seal {
+    display: none;
+  }
+
+  .letter-body p br {
+    display: none;
+  }
+
+  .footer-inner {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  /* Dashboard header row */
+  #dashboard > .container > div:first-child {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 16px;
+  }
+
+  #dashboard > .container > div:first-child > div:last-child {
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+
+  /* Profile settings bio/website grid */
+  #profile-settings-card > div:nth-child(2) {
+    grid-template-columns: 1fr !important;
+  }
+
+  /* Leaderboard section header */
+  #leaderboard .section-header {
+    flex-direction: column !important;
+    align-items: flex-start !important;
+    gap: 12px;
+  }
+
+  #leaderboard .section-header > div {
+    flex-wrap: wrap;
+    gap: 10px !important;
+  }
+
+  /* Store controls */
+  #store-controls {
+    flex-wrap: wrap;
+  }
+
+  /* Plugin store header */
+  #plugin-store > div:first-child,
+  #theme-store-section > div:first-child {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 12px;
+  }
+}

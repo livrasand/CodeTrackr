@@ -9,7 +9,7 @@ use uuid::Uuid;
 use chrono::{DateTime, Utc};
 use regex::Regex;
 
-use crate::{AppState, auth::AuthenticatedUser};
+use crate::{AppState, auth::AuthenticatedUser, error_handling};
 
 #[derive(Debug, Serialize, Deserialize, sqlx::FromRow)]
 pub struct StorePlugin {
@@ -155,7 +155,7 @@ pub async fn publish_plugin(
     .bind(&body.settings_schema)
     .fetch_one(&state.db.pool)
     .await
-    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e.to_string()}))))?;
+    .map_err(|e| error_handling::handle_database_error(e))?;
 
     // Parse dependencies from description
     if let Some(desc) = &plugin.description {
@@ -169,7 +169,7 @@ pub async fn publish_plugin(
             .bind(dep_name)
             .execute(&state.db.pool)
             .await
-            .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e.to_string()}))))?;
+            .map_err(|e| error_handling::handle_database_error(e))?;
         }
     }
 
@@ -230,7 +230,7 @@ async fn install_plugin_recursive(user_id: Uuid, plugin_id: Uuid, state: &AppSta
             .bind(current_id)
             .execute(&state.db.pool)
             .await
-            .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e.to_string()}))))?;
+            .map_err(|e| error_handling::handle_database_error(e))?;
         }
     }
 
@@ -297,7 +297,7 @@ pub async fn uninstall_plugin(
     .bind(plugin_id)
     .execute(&state.db.pool)
     .await
-    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e.to_string()}))))?;
+    .map_err(|e| error_handling::handle_database_error(e))?;
 
     Ok(Json(json!({ "status": "uninstalled" })))
 }
@@ -329,7 +329,7 @@ pub async fn report_plugin(
     .bind(&body.description)
     .execute(&state.db.pool)
     .await
-    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e.to_string()}))))?;
+    .map_err(|e| error_handling::handle_database_error(e))?;
 
     Ok(Json(json!({ "status": "reported" })))
 }
@@ -353,7 +353,7 @@ pub async fn admin_ban_plugin(
     .bind(&body.reason)
     .execute(&state.db.pool)
     .await
-    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e.to_string()}))))?;
+    .map_err(|e| error_handling::handle_database_error(e))?;
 
     Ok(Json(json!({ "status": "banned" })))
 }
@@ -373,7 +373,7 @@ pub async fn admin_unban_plugin(
     .bind(plugin_id)
     .execute(&state.db.pool)
     .await
-    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e.to_string()}))))?;
+    .map_err(|e| error_handling::handle_database_error(e))?;
 
     Ok(Json(json!({ "status": "unbanned" })))
 }
@@ -388,7 +388,7 @@ pub async fn author_delete_plugin(
         .bind(user.id)
         .execute(&state.db.pool)
         .await
-        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e.to_string()}))))?;
+        .map_err(|e| error_handling::handle_database_error(e))?;
 
     if rows.rows_affected() == 0 {
         return Err((StatusCode::FORBIDDEN, Json(json!({"error": "Not found or not your plugin"}))));
@@ -410,7 +410,7 @@ pub async fn admin_delete_plugin(
         .bind(plugin_id)
         .execute(&state.db.pool)
         .await
-        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e.to_string()}))))?;
+        .map_err(|e| error_handling::handle_database_error(e))?;
 
     Ok(Json(json!({ "status": "deleted" })))
 }
@@ -458,7 +458,7 @@ pub async fn admin_list_reports(
     )
     .fetch_all(&state.db.pool)
     .await
-    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e.to_string()}))))?;
+    .map_err(|e| error_handling::handle_database_error(e))?;
 
     let result: Vec<Value> = reports.iter().map(|r| {
         use sqlx::Row;
@@ -495,7 +495,7 @@ pub async fn get_plugin_script(
     .bind(plugin_id)
     .fetch_optional(&state.db.pool)
     .await
-    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e.to_string()}))))?;
+    .map_err(|e| error_handling::handle_database_error(e))?;
 
     match row {
         Some(p) => Ok(Json(json!({ "script": p.script }))),
@@ -515,7 +515,7 @@ pub async fn get_plugin_accepted_version(
     .bind(plugin_id)
     .fetch_optional(&state.db.pool)
     .await
-    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e.to_string()}))))?;
+    .map_err(|e| error_handling::handle_database_error(e))?;
 
     match row {
         Some((version, script)) => Ok(Json(json!({ "accepted_version": version, "accepted_script": script }))),
@@ -541,7 +541,7 @@ pub async fn accept_plugin_version(
     .bind(plugin_id)
     .fetch_optional(&state.db.pool)
     .await
-    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e.to_string()}))))?
+    .map_err(|e| error_handling::handle_database_error(e))?
     .ok_or_else(|| (StatusCode::NOT_FOUND, Json(json!({"error": "Plugin not found"}))))?;
 
     sqlx::query(
@@ -553,7 +553,7 @@ pub async fn accept_plugin_version(
     .bind(plugin_id)
     .execute(&state.db.pool)
     .await
-    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e.to_string()}))))?;
+    .map_err(|e| error_handling::handle_database_error(e))?;
 
     Ok(Json(json!({ "status": "accepted", "version": plugin.version })))
 }
@@ -592,7 +592,7 @@ pub async fn rate_plugin(
     )
     .bind(user.id).bind(plugin_id).bind(body.rating)
     .execute(&state.db.pool).await
-    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e.to_string()}))))?;
+    .map_err(|e| error_handling::handle_database_error(e))?;
     Ok(Json(json!({ "status": "rated" })))
 }
 
@@ -612,7 +612,7 @@ pub async fn review_plugin(
     )
     .bind(user.id).bind(plugin_id).bind(body.body.trim())
     .execute(&state.db.pool).await
-    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e.to_string()}))))?;
+    .map_err(|e| error_handling::handle_database_error(e))?;
     Ok(Json(json!({ "status": "reviewed" })))
 }
 
@@ -631,7 +631,7 @@ pub async fn get_plugin_detail(
     )
     .bind(plugin_id)
     .fetch_optional(&state.db.pool).await
-    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e.to_string()}))))?
+    .map_err(|e| error_handling::handle_database_error(e))?
     .ok_or_else(|| (StatusCode::NOT_FOUND, Json(json!({"error": "Not found"}))))?;
 
     let reviews: Vec<Value> = sqlx::query(
@@ -712,7 +712,7 @@ pub async fn add_screenshot(
     )
     .bind(plugin_id).bind(user.id).bind(body.url.trim()).bind(&body.caption)
     .execute(&state.db.pool).await
-    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e.to_string()}))))?;
+    .map_err(|e| error_handling::handle_database_error(e))?;
     Ok(Json(json!({ "status": "added" })))
 }
 
@@ -729,7 +729,7 @@ pub async fn admin_resolve_report(
         .bind(report_id)
         .execute(&state.db.pool)
         .await
-        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e.to_string()}))))?;
+        .map_err(|e| error_handling::handle_database_error(e))?;
 
     Ok(Json(json!({ "status": "resolved" })))
 }

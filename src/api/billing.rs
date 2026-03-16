@@ -9,7 +9,7 @@ use serde_json::{json, Value};
 use hmac::{Hmac, Mac};
 use sha2::Sha256;
 
-use crate::{AppState, auth::AuthenticatedUser};
+use crate::{AppState, auth::AuthenticatedUser, error_handling};
 
 type HmacSha256 = Hmac<Sha256>;
 
@@ -219,7 +219,7 @@ async fn handle_checkout_completed(
     .bind(user_id)
     .execute(&state.db.pool)
     .await
-    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e.to_string()}))))?;
+    .map_err(|e| error_handling::handle_database_error(e))?;
 
     tracing::info!("User {} upgraded to Pro (sub: {})", user_id, subscription_id);
     Ok(())
@@ -249,7 +249,7 @@ async fn handle_subscription_updated(
     .bind(subscription_id)
     .execute(&state.db.pool)
     .await
-    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e.to_string()}))))?;
+    .map_err(|e| error_handling::handle_database_error(e))?;
 
     tracing::info!("Subscription {} updated to plan={}", subscription_id, plan);
     Ok(())
@@ -268,7 +268,7 @@ async fn handle_subscription_deleted(
     .bind(subscription_id)
     .execute(&state.db.pool)
     .await
-    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e.to_string()}))))?;
+    .map_err(|e| error_handling::handle_database_error(e))?;
 
     tracing::info!("Subscription {} deleted, user downgraded to free", subscription_id);
     Ok(())

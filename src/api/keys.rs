@@ -9,8 +9,9 @@ use chrono::Utc;
 
 use crate::{
     AppState,
-    auth::{AuthenticatedUser, generate_api_key, hash_api_key},
+    auth::{AuthenticatedUser, generate_api_key, hash_api_key_with_secret},
     models::{ApiKey, ApiKeyResponse, ApiKeyCreated},
+    error_handling,
 };
 
 pub async fn list_keys(
@@ -23,7 +24,7 @@ pub async fn list_keys(
     .bind(user.id)
     .fetch_all(&state.db.pool)
     .await
-    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e.to_string()}))))?;
+    .map_err(|e| error_handling::handle_database_error(e))?;
 
     let response: Vec<ApiKeyResponse> = keys.into_iter().map(|k| ApiKeyResponse {
         id: k.id,
@@ -60,7 +61,7 @@ pub async fn create_key(
     }
 
     let key = generate_api_key();
-    let key_hash = hash_api_key(&key);
+    let key_hash = hash_api_key_with_secret(&key, &state.config.jwt_secret);
     let prefix = key[..12].to_string();
     let name = body.name.unwrap_or_else(|| format!("Key #{}", count + 1));
     let id = Uuid::new_v4();
@@ -75,7 +76,7 @@ pub async fn create_key(
     .bind(&prefix)
     .execute(&state.db.pool)
     .await
-    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e.to_string()}))))?;
+    .map_err(|e| error_handling::handle_database_error(e))?;
 
     Ok(Json(json!({
         "key": ApiKeyCreated {
@@ -99,7 +100,7 @@ pub async fn delete_key(
     .bind(user.id)
     .execute(&state.db.pool)
     .await
-    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e.to_string()}))))?;
+    .map_err(|e| error_handling::handle_database_error(e))?;
 
     if result.rows_affected() == 0 {
         return Err((StatusCode::NOT_FOUND, Json(json!({"error": "Key not found"}))));

@@ -1,6 +1,7 @@
 mod api;
 mod auth;
 mod db;
+mod error_handling;
 mod models;
 mod realtime;
 mod services;
@@ -15,6 +16,7 @@ use tower_http::{
     trace::TraceLayer,
     compression::CompressionLayer,
 };
+use tower_governor::{GovernorLayer, governor::GovernorConfigBuilder};
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
 use db::Database;
@@ -26,6 +28,7 @@ pub struct AppState {
     pub db: Database,
     pub redis: RedisPool,
     pub config: AppConfig,
+    pub exchange_codes: std::sync::Arc<tokio::sync::Mutex<std::collections::HashMap<String, String>>>,
 }
 
 #[derive(Clone)]
@@ -88,7 +91,7 @@ async fn main() -> anyhow::Result<()> {
     tracing::info!("Connecting to Redis...");
     let redis = RedisPool::new(&redis_url).await?;
 
-    let state = AppState { db, redis, config };
+    let state = AppState { db, redis, config, exchange_codes: std::sync::Arc::new(tokio::sync::Mutex::new(std::collections::HashMap::new())) };
 
     // Start plugin tick loop
     plugins::start_tick_loop(state.clone());
@@ -128,7 +131,7 @@ async fn main() -> anyhow::Result<()> {
 
     // Build plugin router (must be done here, inside async context)
     let plugin_router = {
-        let registry = plugins::REGISTRY.read().await;
+        let registry = plugins::get_registry().read().await;
         registry.build_router()
     };
 
@@ -161,12 +164,38 @@ async fn main() -> anyhow::Result<()> {
     tracing::info!("🚀 CodeTrackr running on http://{}", addr);
 
     let listener = tokio::net::TcpListener::bind(addr).await?;
-    axum::serve(listener, app.into_make_service()).await?;
+    axum::serve(listener, app.into_make_service_with_connect_info::<SocketAddr>()).await?;
 
     Ok(())
 }
 
 fn api_routes(state: AppState, plugin_router: Router<AppState>) -> Router<AppState> {
+
+    // Rate limiting for webhook only (more restrictive)
+    let webhook_governor_conf = GovernorConfigBuilder::default()
+        .per_second(10)
+        .burst_size(5)
+        .finish()
+        .unwrap();
+    let webhook_governor_layer = GovernorLayer {
+        config: std::sync::Arc::new(webhook_governor_conf),
+    };
+
+    // General rate limiting
+    let governor_conf = GovernorConfigBuilder::default()
+        .per_second(200)
+        .burst_size(50)
+        .finish()
+        .unwrap();
+    let governor_layer = GovernorLayer {
+        config: std::sync::Arc::new(governor_conf),
+    };
+
+    // Webhook gets its own router with its own restrictive rate limiting
+    let webhook_router = Router::new()
+        .route("/billing/webhook", post(api::billing::stripe_webhook))
+        .with_state(state.clone())
+        .layer(webhook_governor_layer);
 
     Router::new()
         // Heartbeat
@@ -247,22 +276,38 @@ fn api_routes(state: AppState, plugin_router: Router<AppState>) -> Router<AppSta
         .route("/store/admin/delete/:id", delete(api::store::admin_delete_plugin))
         .route("/store/admin/reports", get(api::store::admin_list_reports))
         .route("/store/admin/reports/:id/resolve", post(api::store::admin_resolve_report))
-        // Billing / Stripe
+        // Billing / Stripe (con rate limiting específico)
         .route("/billing/config", get(api::billing::get_billing_config))
         .route("/billing/status", get(api::billing::get_billing_status))
         .route("/billing/checkout", post(api::billing::create_checkout_session))
         .route("/billing/portal", post(api::billing::create_portal_session))
-        .route("/billing/webhook", post(api::billing::stripe_webhook))
         .with_state(state)
+        .layer(governor_layer)  // Rate limiting general para API
+        .merge(webhook_router)
 }
 
 
 fn auth_routes(state: AppState) -> Router<AppState> {
+    // Rate limiting for auth endpoints (more restrictive)
+    let auth_governor_conf = GovernorConfigBuilder::default()
+        .per_second(100)
+        .burst_size(20)
+        .finish()
+        .unwrap();
+    let auth_governor_layer = GovernorLayer {
+        config: std::sync::Arc::new(auth_governor_conf),
+    };
+
     Router::new()
         .route("/github", get(auth::github::github_login))
         .route("/github/callback", get(auth::github::github_callback))
+        .route("/exchange", post(auth::github::exchange_code))
         .route("/gitlab", get(auth::gitlab::gitlab_login))
         .route("/gitlab/callback", get(auth::gitlab::gitlab_callback))
+        .route("/anonymous/create", post(auth::anonymous::create_anonymous_account))
+        .route("/anonymous/login", post(auth::anonymous::login_with_account_number))
+        .route("/anonymous/verify", post(auth::anonymous::verify_account_number))
         .route("/logout", post(auth::logout))
         .with_state(state)
+        .layer(auth_governor_layer)  // Rate limiting específico para auth
 }

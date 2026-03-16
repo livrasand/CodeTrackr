@@ -1,13 +1,13 @@
 use axum::{
     extract::{Query, State},
-    response::{Redirect, Json},
-    http::StatusCode,
+    response::{Redirect, Json, Response},
+    http::{StatusCode, header},
 };
 use serde::Deserialize;
 use serde_json::json;
 use uuid::Uuid;
 
-use crate::{AppState, auth::{create_jwt, generate_api_key, hash_api_key}};
+use crate::{AppState, auth::{create_jwt, generate_api_key, hash_api_key_with_secret}, error_handling};
 
 #[derive(Deserialize)]
 #[allow(dead_code)]
@@ -75,6 +75,14 @@ pub async fn github_callback(
         .await
         .map_err(|e| (StatusCode::BAD_GATEWAY, Json(json!({"error": e.to_string()}))))?;
 
+    if let Some(ref gh_error) = token_res.error {
+        tracing::error!("GitHub token exchange error: {}", gh_error);
+        return Err((
+            StatusCode::UNAUTHORIZED,
+            Json(json!({"error": "GitHub OAuth failed", "reason": gh_error})),
+        ));
+    }
+
     let access_token = token_res.access_token.ok_or_else(|| {
         (StatusCode::UNAUTHORIZED, Json(json!({"error": "GitHub OAuth failed"})))
     })?;
@@ -114,7 +122,7 @@ pub async fn github_callback(
     .bind(&gh_user.location)
     .fetch_one(&state.db.pool)
     .await
-    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e.to_string()}))))?;
+    .map_err(|e| error_handling::handle_auth_error(e))?;
 
     // Create default API key if user has none
     let key_count: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM api_keys WHERE user_id = $1")
@@ -125,7 +133,7 @@ pub async fn github_callback(
 
     if key_count == 0 {
         let key = generate_api_key();
-        let key_hash = hash_api_key(&key);
+        let key_hash = hash_api_key_with_secret(&key, &state.config.jwt_secret);
         let prefix = key[..12].to_string();
 
         let _ = sqlx::query(
@@ -141,7 +149,38 @@ pub async fn github_callback(
     }
 
     let jwt = create_jwt(&user.id.to_string(), &state.config.jwt_secret)
-        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e.to_string()}))))?;
+        .map_err(|e| error_handling::handle_auth_error(e))?;
+
+    // Generar código de un solo uso para canje seguro
+    let exchange_code = Uuid::new_v4().to_string();
+    let exchange_key = format!("auth_exchange:{}", exchange_code);
+    
+    // Almacenar JWT en Redis por 5 minutos (300 segundos)
+    let exchange_stored = match state.redis.get_conn().await {
+        Ok(mut conn) => {
+            let result: Result<(), redis::RedisError> = redis::cmd("SETEX")
+                .arg(&exchange_key)
+                .arg(300) // 5 minutos TTL
+                .arg(&jwt)
+                .query_async(&mut conn)
+                .await;
+            if let Err(ref e) = result {
+                tracing::error!("Redis SETEX failed for exchange code {}: {}", exchange_code, e);
+            }
+            result.is_ok()
+        }
+        Err(e) => {
+            tracing::error!("Redis get_conn failed during github_callback: {}", e);
+            false
+        }
+    };
+
+    if !exchange_stored {
+        // Redis unavailable — fall back to in-memory store
+        tracing::warn!("Redis unavailable, storing exchange code in memory");
+        let mut codes = state.exchange_codes.lock().await;
+        codes.insert(exchange_code.clone(), jwt.clone());
+    }
 
     // Ejecutar hooks de lifecycle para 'on_user_login'
     let event_data = json!({
@@ -153,8 +192,82 @@ pub async fn github_callback(
     });
     crate::api::plugin_rpc::execute_lifecycle_hooks(&user.id, "on_user_login", event_data, &state).await;
 
+    // Redirigir con código de canje en lugar del JWT (hash fragment para evitar interceptación por query-param handlers)
     Ok(Redirect::temporary(&format!(
-        "{}/dashboard#token={}",
-        state.config.frontend_url, jwt
+        "{}/dashboard#exchange={}",
+        state.config.frontend_url, exchange_code
     )))
+}
+
+#[derive(Deserialize)]
+pub struct ExchangeRequest {
+    pub code: String,
+}
+
+pub async fn exchange_code(
+    State(state): State<AppState>,
+    Json(payload): Json<ExchangeRequest>,
+) -> Result<Response, (StatusCode, Json<serde_json::Value>)> {
+    let exchange_key = format!("auth_exchange:{}", payload.code);
+    
+    // Obtener JWT de Redis, con fallback a memoria
+    let jwt = match state.redis.get_conn().await {
+        Ok(mut conn) => {
+            let token: Option<String> = match redis::cmd("GET")
+                .arg(&exchange_key)
+                .query_async(&mut conn)
+                .await
+            {
+                Ok(val) => val,
+                Err(e) => {
+                    tracing::error!("Redis GET failed for exchange key {}: {}", exchange_key, e);
+                    None
+                }
+            };
+
+            if token.is_some() {
+                // Eliminar el código después de usarlo (single-use)
+                let _: Result<(), _> = redis::cmd("DEL")
+                    .arg(&exchange_key)
+                    .query_async(&mut conn)
+                    .await;
+            } else {
+                tracing::warn!("Exchange code not found in Redis, checking in-memory fallback");
+            }
+
+            token
+        }
+        Err(e) => {
+            tracing::warn!("Redis unavailable during exchange_code ({}), checking in-memory fallback", e);
+            None
+        }
+    };
+
+    // Fallback: check in-memory store if Redis returned nothing
+    let jwt = if jwt.is_none() {
+        let mut codes = state.exchange_codes.lock().await;
+        codes.remove(&payload.code)
+    } else {
+        jwt
+    };
+
+    let jwt = jwt.ok_or_else(|| {
+        (StatusCode::BAD_REQUEST, Json(json!({"error": "Invalid or expired exchange code"})))
+    })?;
+
+    // Crear cookie segura con el JWT
+    let cookie_value = format!(
+        "jwt={}; HttpOnly; Secure; SameSite=Lax; Path=/; Max-Age={}",
+        jwt,
+        60 * 60 * 24 * 30 // 30 días en segundos
+    );
+
+    let response = Response::builder()
+        .status(StatusCode::OK)
+        .header(header::SET_COOKIE, cookie_value)
+        .header(header::CONTENT_TYPE, "application/json")
+        .body(json!({"success": true, "token": jwt}).to_string().into())
+        .map_err(|e| error_handling::handle_auth_error(e))?;
+
+    Ok(response)
 }

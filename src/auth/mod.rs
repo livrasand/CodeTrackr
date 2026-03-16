@@ -1,18 +1,19 @@
 pub mod github;
 pub mod gitlab;
+pub mod anonymous;
 
 use axum::{
     extract::State,
     http::StatusCode,
-    response::Json,
+    response::{Json, Response},
 };
 use serde_json::json;
-use crate::AppState;
+use crate::{AppState, error_handling};
 
 pub async fn logout(
     State(state): State<AppState>,
     axum_extra::TypedHeader(auth): axum_extra::TypedHeader<axum_extra::headers::Authorization<axum_extra::headers::authorization::Bearer>>,
-) -> (StatusCode, Json<serde_json::Value>) {
+) -> Result<Response, (StatusCode, Json<serde_json::Value>)> {
     let token = auth.token();
     if let Ok(claims) = verify_jwt(token, &state.config.jwt_secret) {
         let now = chrono::Utc::now().timestamp();
@@ -27,7 +28,16 @@ pub async fn logout(
                 .await;
         }
     }
-    (StatusCode::OK, Json(json!({"message": "Logged out successfully"})))
+    
+    // Eliminar cookie JWT
+    let response = Response::builder()
+        .status(StatusCode::OK)
+        .header("Set-Cookie", "jwt=; HttpOnly; Secure; SameSite=Lax; Path=/; Max-Age=0")
+        .header("Content-Type", "application/json")
+        .body(json!({"message": "Logged out successfully"}).to_string().into())
+        .map_err(|e| error_handling::handle_auth_error(e))?;
+    
+    Ok(response)
 }
 
 // ── JWT ──────────────────────────────────────────────────────────────────────
@@ -127,7 +137,7 @@ impl FromRequestParts<AppState> for AuthenticatedUser {
         }
 
         // Try API key
-        let key_hash = hash_api_key(&token);
+        let key_hash = hash_api_key_with_secret(&token, &state.config.jwt_secret);
         let user = sqlx::query_as::<_, crate::models::User>(
             r#"
             SELECT u.* FROM users u
@@ -170,15 +180,31 @@ pub fn extract_token(headers: &HeaderMap) -> Option<String> {
     if let Some(key) = headers.get("X-API-Key") {
         return Some(key.to_str().ok()?.to_string());
     }
+    // Cookie header (para JWT en cookie HttpOnly)
+    if let Some(cookie) = headers.get("Cookie") {
+        let val = cookie.to_str().ok()?;
+        for pair in val.split(';') {
+            let pair = pair.trim();
+            if let Some(jwt) = pair.strip_prefix("jwt=") {
+                return Some(jwt.to_string());
+            }
+        }
+    }
     None
 }
 
-pub fn hash_api_key(key: &str) -> String {
+#[allow(dead_code)]
+pub fn hash_api_key(_key: &str) -> String {
+    // Esta función debe recibir el secret como parámetro para evitar inconsistencias
+    panic!("hash_api_key debe ser llamada con jwt_secret como parámetro. Usa hash_api_key_with_secret(key, secret)");
+}
+
+pub fn hash_api_key_with_secret(key: &str, secret: &str) -> String {
     use hmac::{Hmac, Mac};
     use sha2::Sha256;
-    let secret = std::env::var("JWT_SECRET").unwrap_or_default();
+    
     let mut mac = Hmac::<Sha256>::new_from_slice(secret.as_bytes())
-        .unwrap_or_else(|_| Hmac::<Sha256>::new_from_slice(b"fallback").unwrap());
+        .expect("JWT_SECRET debe tener al menos 32 bytes para HMAC-SHA256");
     mac.update(key.as_bytes());
     hex::encode(mac.finalize().into_bytes())
 }

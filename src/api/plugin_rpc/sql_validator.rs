@@ -1,3 +1,20 @@
+//! SQL validation layer for the plugin sandbox.
+//!
+//! Plugins can execute SQL against the database, but every query must pass through
+//! this validator before reaching sqlx. The validator operates on a real lexer
+//! (token-based), not on raw string matching, so it is immune to bypass techniques
+//! based on whitespace, unicode normalization, comment injection, or string literal
+//! smuggling.
+//!
+//! # Security model
+//! 1. Only `SELECT`, `INSERT`, `UPDATE`, `DELETE` are permitted as the first token.
+//! 2. Set operations (`UNION`, `INTERSECT`, `EXCEPT`) and CTEs (`WITH`) are blocked.
+//! 3. Table access is restricted to [`PLUGIN_ALLOWED_TABLES`].
+//! 4. Queries on user-scoped tables must include a `user_id = $N` token filter.
+//! 5. Sensitive columns on the `users` table (email, OAuth IDs, billing fields) are
+//!    blocked at the token level — `SELECT *` on `users` is also rejected.
+//! 6. System catalog tables (`information_schema`, `pg_catalog`, etc.) are blocked.
+
 /// Tablas que los plugins pueden consultar. Solo lectura de datos propios del usuario.
 /// Tablas de sistema accesibles: solo las que pertenecen al usuario autenticado.
 /// Tablas sensibles (oauth_tokens, stripe, key_hash, etc.) siguen excluidas.
@@ -19,6 +36,9 @@ pub const PLUGIN_ALLOWED_TABLES: &[&str] = &[
 
 /// Comandos SQL permitidos para plugins (solo lectura + insert/update/delete en tablas propias).
 const PLUGIN_ALLOWED_COMMANDS: &[&str] = &["SELECT", "INSERT", "UPDATE", "DELETE"];
+
+// Importar la función compartida de db.rs
+use crate::db::find_dollar_quote_end;
 
 /// Tipo de token léxico SQL.
 #[derive(Debug, PartialEq, Clone)]
@@ -80,18 +100,10 @@ fn tokenize_sql(sql: &str) -> Vec<SqlToken> {
                     tokens.push(SqlToken::Param);
                     continue;
                 }
-                // Dollar-quote tag: $[tag]$
-                let mut j = i + 1;
-                while j < len && (chars[j].is_alphanumeric() || chars[j] == '_') { j += 1; }
-                if j < len && chars[j] == '$' {
-                    let tag: String = chars[i..=j].iter().collect();
-                    let body_start = j + 1;
-                    let body: String = chars[body_start..].iter().collect();
-                    if let Some(end) = body.find(&tag) {
-                        i = body_start + end + tag.len();
-                    } else {
-                        i = len;
-                    }
+                // Usar la función compartida para dollar-quotes
+                let sql_str: String = chars.iter().collect();
+                if let Some(end_pos) = find_dollar_quote_end(&sql_str, i) {
+                    i = end_pos;
                     tokens.push(SqlToken::Literal);
                 } else {
                     // $ suelto — tratar como punct
@@ -132,7 +144,7 @@ fn tokenize_sql(sql: &str) -> Vec<SqlToken> {
                     "THEN", "ELSE", "END", "BETWEEN", "TRUE", "FALSE",
                     "INFORMATION_SCHEMA", "PG_CATALOG", "PG_CLASS",
                     "COALESCE", "COUNT", "SUM", "AVG", "MAX", "MIN",
-                    "NOW", "CURRENT_TIMESTAMP", "CAST",
+                    "NOW", "CURRENT_TIMESTAMP", "CAST", "ANY",
                 ];
                 if KEYWORDS.contains(&upper.as_str()) {
                     tokens.push(SqlToken::Keyword(upper));
@@ -168,9 +180,24 @@ const PLUGIN_USER_SCOPED_TABLES: &[&str] = &[
     "users",
 ];
 
-/// Valida el SQL de un plugin operando sobre tokens léxicos reales.
-/// No depende de find()/contains() sobre el string raw — inmune a tricks de
-/// whitespace, unicode, strings literales con keywords, y subqueries anidadas.
+/// Validates SQL from a plugin script against a token-based allowlist.
+///
+/// # Security model
+/// Uses a real lexer instead of string matching to prevent bypass via whitespace
+/// tricks, unicode escapes, comment injection, or string literal smuggling.
+/// The first token must be an allowed DML command; set operations and CTEs are
+/// always rejected; table names are checked against [`PLUGIN_ALLOWED_TABLES`];
+/// and user-scoped tables require an explicit `user_id = $N` guard.
+///
+/// # Errors
+/// Returns `Err` with a human-readable message if the SQL:
+/// - is empty
+/// - starts with a disallowed command (e.g. `DROP`, `CREATE`, `TRUNCATE`)
+/// - references a table outside the allowlist
+/// - queries a user-scoped table without a `user_id = $N` filter
+/// - accesses blocked columns on the `users` table
+/// - uses `SELECT *` on the `users` table
+/// - contains `UNION`, `INTERSECT`, `EXCEPT`, `WITH`, or unbalanced parentheses
 pub fn validate_plugin_sql(sql: &str) -> Result<(), String> {
     let tokens = tokenize_sql(sql);
 
@@ -187,26 +214,118 @@ pub fn validate_plugin_sql(sql: &str) -> Result<(), String> {
         _ => return Err("SQL must start with a valid command (SELECT/INSERT/UPDATE/DELETE)".to_string()),
     }
 
-    // 2. Rechazar keywords estructuralmente peligrosos en cualquier posición
-    for tok in &tokens {
+    // 2. Rechazar keywords estructuralmente peligrosos y validar paréntesis contextualmente
+    let mut paren_depth = 0;
+    for (i, tok) in tokens.iter().enumerate() {
         match tok {
             SqlToken::Keyword(kw) => match kw.as_str() {
                 "UNION" | "INTERSECT" | "EXCEPT" =>
                     return Err(format!("'{}' is not allowed in plugin queries", kw)),
                 "WITH" =>
                     return Err("CTEs (WITH) are not allowed in plugin queries".to_string()),
-                "AS" =>
-                    return Err("Aliases (AS) are not allowed in plugin queries".to_string()),
+                "AS" => {
+                    // Permitir AS solo en contextos seguros: CAST y RETURNING
+                    // Rechazar AS para aliases de tablas/columnas (que pueden ofuscar)
+                    let is_safe_context = {
+                        // Verificar si estamos en un contexto CAST (buscando CAST hacia atrás)
+                        let in_cast_context = {
+                            let mut found_cast = false;
+                            let mut j = i.saturating_sub(1);
+                            while j > 0 {
+                                match &tokens[j] {
+                                    SqlToken::Keyword(kw) if kw.as_str() == "CAST" => {
+                                        found_cast = true;
+                                        break;
+                                    }
+                                    SqlToken::Keyword(_) => break, // Si encontramos otro keyword, no es CAST context
+                                    _ => j -= 1,
+                                }
+                            }
+                            found_cast
+                        };
+                        
+                        // Verificar si estamos en RETURNING (INSERT ... RETURNING col AS new_col)
+                        let in_returning = tokens.iter().take(i).any(|t| matches!(t, SqlToken::Keyword(kw) if kw.as_str() == "RETURNING"));
+                        
+                        in_cast_context || in_returning
+                    };
+                    
+                    if !is_safe_context {
+                        return Err("Table/column aliases (AS) are not allowed in plugin queries".to_string());
+                    }
+                },
                 "INFORMATION_SCHEMA" | "PG_CATALOG" | "PG_CLASS" =>
                     return Err("System catalog access is not allowed in plugin queries".to_string()),
                 _ => {}
             },
-            // Paréntesis de apertura indica subquery potencial — rechazar
             SqlToken::Punct('(') => {
-                return Err("Subqueries and function calls with parentheses are not allowed in plugin queries".to_string());
+                // Permitir paréntesis solo para funciones legítimas o casos específicos
+                let is_valid_paren = {
+                    // Buscar si el token anterior es una función permitida
+                    let prev_is_function = if i > 0 {
+                        match &tokens[i-1] {
+                            SqlToken::Keyword(kw) => matches!(kw.as_str(),
+                                "COALESCE" | "COUNT" | "SUM" | "AVG" | "MAX" | "MIN" |
+                                "NOW" | "CURRENT_TIMESTAMP" | "CAST" | "EXISTS" | "ANY" | "VALUES"
+                            ),
+                            _ => false,
+                        }
+                    } else { false };
+                    
+                    // Permitir ANY() para casos como WHERE id = ANY($1)
+                    // Buscar patrón: Ident Punct('=') Punct('(') Keyword('ANY')
+                    let is_any_pattern = if i >= 2 {
+                        matches!(&tokens[i-2], SqlToken::Ident(_)) &&
+                        matches!(&tokens[i-1], SqlToken::Punct('=')) &&
+                        i + 1 < tokens.len() &&
+                        matches!(&tokens[i+1], SqlToken::Keyword(kw) if kw.as_str() == "ANY")
+                    } else { false };
+                    
+                    // Permitir paréntesis después de VALUES en INSERT
+                    let is_values_pattern = if i > 0 {
+                        matches!(&tokens[i-1], SqlToken::Keyword(kw) if kw.as_str() == "VALUES")
+                    } else { false };
+                    
+                    // Permitir paréntesis para listas de columnas en INSERT/UPDATE
+                    // Buscar patrón: Keyword("INSERT") ... Ident(table_name) Punct('(')
+                    let is_column_list_pattern = {
+                        let mut found_insert = false;
+                        let mut found_table = false;
+                        for j in (0..i).rev() {
+                            match &tokens[j] {
+                                SqlToken::Keyword(kw) if kw.as_str() == "INSERT" => {
+                                    found_insert = true;
+                                    break;
+                                }
+                                SqlToken::Ident(_) => {
+                                    found_table = true;
+                                }
+                                _ => {}
+                            }
+                        }
+                        found_insert && found_table
+                    };
+                    
+                    prev_is_function || is_any_pattern || is_values_pattern || is_column_list_pattern
+                };
+                
+                if !is_valid_paren {
+                    return Err("Parentheses are only allowed for functions (COALESCE, COUNT, SUM, ANY, etc.), VALUES clauses, and column lists".to_string());
+                }
+                paren_depth += 1;
+            }
+            SqlToken::Punct(')') => {
+                if paren_depth == 0 {
+                    return Err("Unbalanced parentheses".to_string());
+                }
+                paren_depth -= 1;
             }
             _ => {}
         }
+    }
+    
+    if paren_depth != 0 {
+        return Err("Unbalanced parentheses".to_string());
     }
 
     // 3. Extraer tablas referenciadas buscando el token DESPUÉS de FROM/JOIN/INTO/UPDATE

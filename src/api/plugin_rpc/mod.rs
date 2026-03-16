@@ -7,20 +7,26 @@ use axum::{
     response::Json,
 };
 use serde_json::{json, Value};
-use futures::future;
+use futures::{stream::{self, StreamExt}};
 
-use crate::{AppState, auth::AuthenticatedUser};
+use crate::{AppState, auth::AuthenticatedUser, error_handling};
 use sandbox::run_rpc_in_quickjs;
 
 /// Ejecuta hooks de lifecycle en plugins JavaScript instalados por el usuario.
 /// Los plugins pueden exportar un objeto `lifecycle` con hooks como `on_user_register`, `on_heartbeat`, etc.
-/// Los hooks se ejecutan en paralelo y los errores no bloquean la operación principal.
+/// Los hooks se ejecutan con concurrencia limitada para evitar agotar recursos del servidor.
 pub async fn execute_lifecycle_hooks(
     user_id: &uuid::Uuid,
     hook_name: &str,
     event_data: serde_json::Value,
     state: &AppState,
 ) {
+    // Límite: máximo 3 plugins simultáneos por llamada (configurable via env var)
+    let max_concurrent: usize = std::env::var("MAX_PLUGIN_CONCURRENCY")
+        .ok()
+        .and_then(|v| v.parse().ok())
+        .unwrap_or(3);
+
     // Obtener todos los plugins instalados por el usuario que tienen script
     let plugins: Vec<(String, String)> = match sqlx::query_as::<_, (String, String)>(
         r#"SELECT p.name, p.script
@@ -39,32 +45,32 @@ pub async fn execute_lifecycle_hooks(
         }
     };
 
-    // Ejecutar hooks en paralelo
-    let futures: Vec<_> = plugins
-        .into_iter()
-        .map(|(plugin_name, script)| {
-            let event_data = event_data.clone();
-            let state = state.clone();
-            let user_id = *user_id;
-            let hook_name = hook_name.to_string();
-
-            tokio::spawn(async move {
-                sandbox::run_lifecycle_hook_in_quickjs(
-                    &script,
-                    &hook_name,
-                    &plugin_name,
-                    &user_id.to_string(),
-                    &serde_json::to_string(&event_data).unwrap_or_else(|_| "{}".to_string()),
-                    state,
-                ).await;
-            })
-        })
-        .collect();
-
-    // Esperar a que todos los hooks terminen (con timeout para evitar bloqueos)
+    // Ejecutar hooks con concurrencia limitada usando buffer_unordered
     let _ = tokio::time::timeout(
-        std::time::Duration::from_secs(30), // 30s timeout para todos los hooks
-        future::join_all(futures),
+        std::time::Duration::from_secs(30), // 30s timeout total
+        stream::iter(plugins)
+            .map(|(plugin_name, script)| {
+                let event_data = event_data.clone();
+                let state = state.clone();
+                let user_id = *user_id;
+                let hook_name = hook_name.to_string();
+
+                async move {
+                    let _ = tokio::task::spawn_blocking(move || {
+                        sandbox::run_lifecycle_hook_in_quickjs(
+                            &script,
+                            &hook_name,
+                            &plugin_name,
+                            &user_id.to_string(),
+                            &serde_json::to_string(&event_data).unwrap_or_else(|_| "{}".to_string()),
+                            state,
+                        );
+                    }).await;
+                }
+            })
+            // Aquí está la clave: solo max_concurrent futuros activos a la vez
+            .buffer_unordered(max_concurrent)
+            .collect::<()>(),
     ).await;
 }
 
@@ -111,7 +117,7 @@ pub async fn rpc_call(
     .bind(user.id)
     .fetch_optional(&state.db.pool)
     .await
-    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e.to_string()}))))?
+    .map_err(|e| error_handling::handle_database_error(e))?
     .ok_or_else(|| (StatusCode::NOT_FOUND, Json(json!({"error": "Plugin not found or not installed"}))))?;
 
     let script = row.script.ok_or_else(|| {

@@ -7,7 +7,7 @@ use serde::Deserialize;
 use serde_json::json;
 use uuid::Uuid;
 
-use crate::{AppState, auth::{create_jwt, generate_api_key, hash_api_key}};
+use crate::{AppState, auth::{create_jwt, generate_api_key, hash_api_key_with_secret}, error_handling};
 use super::github::AuthQuery;
 
 #[derive(Deserialize, Debug)]
@@ -105,7 +105,7 @@ pub async fn gitlab_callback(
     .bind(&gl_user.location)
     .fetch_one(&state.db.pool)
     .await
-    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e.to_string()}))))?;
+    .map_err(|e| error_handling::handle_auth_error(e))?;
 
     let key_count: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM api_keys WHERE user_id = $1")
         .bind(user.id)
@@ -115,7 +115,7 @@ pub async fn gitlab_callback(
 
     if key_count == 0 {
         let key = generate_api_key();
-        let key_hash = hash_api_key(&key);
+        let key_hash = hash_api_key_with_secret(&key, &state.config.jwt_secret);
         let prefix = key[..12].to_string();
         let _ = sqlx::query(
             "INSERT INTO api_keys (id, user_id, name, key_hash, key_prefix, created_at) VALUES ($1, $2, $3, $4, $5, NOW())"
@@ -130,7 +130,7 @@ pub async fn gitlab_callback(
     }
 
     let jwt = create_jwt(&user.id.to_string(), &state.config.jwt_secret)
-        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e.to_string()}))))?;
+        .map_err(|e| error_handling::handle_auth_error(e))?;
 
     // Ejecutar hooks de lifecycle para 'on_user_login'
     let event_data = json!({

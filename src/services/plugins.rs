@@ -40,7 +40,7 @@ use axum::Router;
 use async_trait::async_trait;
 use serde_json::Value;
 use std::sync::Arc;
-use once_cell::sync::Lazy;
+use std::sync::OnceLock;
 use tokio::sync::RwLock;
 
 use crate::AppState;
@@ -139,14 +139,19 @@ impl PluginRegistry {
 }
 
 /// Global plugin registry (thread-safe)
-pub static REGISTRY: Lazy<RwLock<PluginRegistry>> = Lazy::new(|| {
-    RwLock::new(PluginRegistry::new())
-});
+pub static REGISTRY: OnceLock<RwLock<PluginRegistry>> = OnceLock::new();
+
+/// Initialize the global registry
+pub fn get_registry() -> &'static RwLock<PluginRegistry> {
+    REGISTRY.get_or_init(|| {
+        RwLock::new(PluginRegistry::new())
+    })
+}
 
 /// Register a plugin into the global registry
 #[allow(dead_code)]
 pub async fn register<P: Plugin>(plugin: P) {
-    REGISTRY.write().await.register(plugin);
+    get_registry().write().await.register(plugin);
 }
 
 /// Start the plugin tick loop (every 30s)
@@ -155,7 +160,7 @@ pub fn start_tick_loop(ctx: AppState) {
         let mut interval = tokio::time::interval(std::time::Duration::from_secs(30));
         loop {
             interval.tick().await;
-            let registry = REGISTRY.read().await;
+            let registry = get_registry().read().await;
             for plugin in registry.plugins() {
                 let p = Arc::clone(plugin);
                 let c = ctx.clone();
@@ -177,23 +182,38 @@ use axum::{
 
 use crate::auth::AuthenticatedUser;
 
+/// `GET /api/v1/plugins` — lists all compiled plugins registered in the global [`REGISTRY`].
+///
+/// Returns a JSON object with `plugins` (metadata array) and `count`. Only
+/// compiled plugins (registered via [`register`]) appear here; store plugins
+/// installed by individual users are served through the store API.
 pub async fn list_plugins(
     State(_state): State<AppState>,
 ) -> Json<serde_json::Value> {
-    let registry = REGISTRY.read().await;
+    let registry = get_registry().read().await;
     Json(serde_json::json!({
         "plugins": registry.list(),
         "count": registry.plugins().len(),
     }))
 }
 
+/// `GET /api/v1/plugins/manifests` — returns dashboard panel manifests for the authenticated user.
+///
+/// Combines two sources:
+/// 1. **Compiled panels** — declared via [`Plugin::dashboard_manifest`] in the global registry.
+/// 2. **Store panels** — plugins installed by this user from the plugin store, ordered by
+///    the user's custom `user_dashboard_order` position.
+///
+/// Banned or unpublished store plugins are excluded. The response shape is
+/// `{ "panels": [...] }` where each entry carries the fields expected by the
+/// frontend widget renderer (`panel`, `title`, `icon`, `widget_type`, `api_endpoint`, etc.).
 pub async fn get_dashboard_manifests(
     AuthenticatedUser(user): AuthenticatedUser,
     State(state): State<AppState>,
 ) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
     // 1. Panels from compiled plugins (REGISTRY)
     let compiled_panels = {
-        let registry = REGISTRY.read().await;
+        let registry = get_registry().read().await;
         registry.dashboard_manifests()
     };
 

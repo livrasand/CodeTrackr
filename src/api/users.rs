@@ -7,7 +7,7 @@ use serde::Deserialize;
 use serde_json::json;
 use uuid::Uuid;
 
-use crate::{AppState, auth::AuthenticatedUser};
+use crate::{AppState, auth::AuthenticatedUser, error_handling};
 
 #[derive(Deserialize)]
 #[allow(dead_code)]
@@ -60,7 +60,7 @@ pub async fn get_public_profile(
     .bind(&username)
     .fetch_optional(&state.db.pool)
     .await
-    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e.to_string()}))))?
+    .map_err(|e| error_handling::handle_database_error(e))?
     .ok_or_else(|| (StatusCode::NOT_FOUND, Json(json!({"error": "User not found"}))))?;
 
     // Follower / following counts
@@ -204,7 +204,7 @@ pub async fn update_profile(
     .bind(user.id)
     .execute(&state.db.pool)
     .await
-    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e.to_string()}))))?;
+    .map_err(|e| error_handling::handle_database_error(e))?;
 
     Ok(Json(json!({ "status": "updated" })))
 }
@@ -217,7 +217,7 @@ pub async fn follow_user(
     let target: Option<(Uuid,)> = sqlx::query_as(
         "SELECT id FROM users WHERE username = $1"
     ).bind(&username).fetch_optional(&state.db.pool).await
-    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e.to_string()}))))?;
+    .map_err(|e| error_handling::handle_database_error(e))?;
 
     let (target_id,) = target.ok_or_else(|| (StatusCode::NOT_FOUND, Json(json!({"error": "User not found"}))))?;
 
@@ -228,7 +228,7 @@ pub async fn follow_user(
     sqlx::query(
         "INSERT INTO user_follows (follower_id, following_id) VALUES ($1, $2) ON CONFLICT DO NOTHING"
     ).bind(me.id).bind(target_id).execute(&state.db.pool).await
-    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e.to_string()}))))?;
+    .map_err(|e| error_handling::handle_database_error(e))?;
 
     Ok(Json(json!({ "status": "following" })))
 }
@@ -241,14 +241,14 @@ pub async fn unfollow_user(
     let target: Option<(Uuid,)> = sqlx::query_as(
         "SELECT id FROM users WHERE username = $1"
     ).bind(&username).fetch_optional(&state.db.pool).await
-    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e.to_string()}))))?;
+    .map_err(|e| error_handling::handle_database_error(e))?;
 
     let (target_id,) = target.ok_or_else(|| (StatusCode::NOT_FOUND, Json(json!({"error": "User not found"}))))?;
 
     sqlx::query(
         "DELETE FROM user_follows WHERE follower_id = $1 AND following_id = $2"
     ).bind(me.id).bind(target_id).execute(&state.db.pool).await
-    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e.to_string()}))))?;
+    .map_err(|e| error_handling::handle_database_error(e))?;
 
     Ok(Json(json!({ "status": "unfollowed" })))
 }
@@ -261,7 +261,7 @@ pub async fn is_following(
     let target: Option<(Uuid,)> = sqlx::query_as(
         "SELECT id FROM users WHERE username = $1"
     ).bind(&username).fetch_optional(&state.db.pool).await
-    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e.to_string()}))))?;
+    .map_err(|e| error_handling::handle_database_error(e))?;
 
     let (target_id,) = match target {
         Some(t) => t,
@@ -337,7 +337,7 @@ pub async fn contact_dev(
     .bind(&username)
     .fetch_optional(&state.db.pool)
     .await
-    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e.to_string()}))))?
+    .map_err(|e| error_handling::handle_database_error(e))?
     .ok_or_else(|| (StatusCode::NOT_FOUND, Json(json!({"error": "User not found or not available for hire"}))))?;
 
     if body.name.trim().is_empty() || body.email.trim().is_empty() || body.message.trim().is_empty() {
@@ -359,7 +359,7 @@ pub async fn contact_dev(
     .bind(body.message.trim())
     .execute(&state.db.pool)
     .await
-    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e.to_string()}))))?;
+    .map_err(|e| error_handling::handle_database_error(e))?;
 
     Ok(Json(json!({ "status": "sent" })))
 }

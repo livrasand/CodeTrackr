@@ -1,36 +1,27 @@
 use futures::StreamExt;
-use redis::Client;
 use anyhow::Result;
-use deadpool_redis::{Pool, Config, Runtime};
 
 #[derive(Clone)]
 pub struct RedisPool {
-    pub pool: Pool,
-    pub client: Client,
+    pub client: redis::Client,
     pub url: String,
 }
 
 impl RedisPool {
     pub async fn new(url: &str) -> Result<Self> {
-        let client = Client::open(url)?;
-        let cfg = Config::from_url(url);
-        let pool = cfg.create_pool(Some(Runtime::Tokio1))
-            .map_err(|e| anyhow::anyhow!("Failed to create Redis pool: {e}"))?;
-        // Validate connectivity at startup
-        let _ = pool.get().await
-            .map_err(|e| anyhow::anyhow!("Redis pool initial connection failed: {e}"))?;
+        let client = redis::Client::open(url)?;
         Ok(Self {
-            pool,
             client,
             url: url.to_string(),
         })
     }
 
-    /// Returns a pooled connection. Each call gets an independent connection
-    /// from the pool — no global mutex, safe for high concurrency.
-    pub async fn get_conn(&self) -> Result<deadpool_redis::Connection> {
-        self.pool.get().await
-            .map_err(|e| anyhow::anyhow!("Redis pool exhausted: {e}"))
+    /// Creates a fresh multiplexed connection on each call.
+    pub async fn get_conn(&self) -> Result<redis::aio::MultiplexedConnection> {
+        self.client
+            .get_multiplexed_async_connection()
+            .await
+            .map_err(|e| anyhow::anyhow!("Redis connection failed: {e}"))
     }
 }
 
@@ -45,17 +36,21 @@ pub mod ws_handler {
     use crate::{AppState, auth::AuthenticatedUser};
 
     // In-process broadcast channel for real-time updates
-    use once_cell::sync::Lazy;
+    use std::sync::OnceLock;
     use tokio::sync::broadcast;
 
-    pub static BROADCAST: Lazy<broadcast::Sender<String>> = Lazy::new(|| {
-        broadcast::channel::<String>(1024).0
-    });
+    pub static BROADCAST: OnceLock<broadcast::Sender<String>> = OnceLock::new();
+
+    fn get_broadcast() -> &'static broadcast::Sender<String> {
+        BROADCAST.get_or_init(|| {
+            broadcast::channel::<String>(1024).0
+        })
+    }
 
     const TICKET_TTL_SECS: u64 = 30;
 
     pub fn publish(msg: String) {
-        let _ = BROADCAST.send(msg);
+        let _ = get_broadcast().send(msg);
     }
 
     /// POST /api/v1/ws-ticket
@@ -142,7 +137,7 @@ pub mod ws_handler {
     }
 
     async fn handle_socket(mut socket: WebSocket) {
-        let mut rx = BROADCAST.subscribe();
+        let mut rx = get_broadcast().subscribe();
         loop {
             tokio::select! {
                 result = rx.recv() => {

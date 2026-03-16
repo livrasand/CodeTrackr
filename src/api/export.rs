@@ -7,7 +7,7 @@ use serde::Deserialize;
 use serde_json::json;
 use chrono::{DateTime, Utc};
 
-use crate::{AppState, auth::AuthenticatedUser};
+use crate::{AppState, auth::AuthenticatedUser, error_handling};
 
 #[derive(Deserialize)]
 pub struct ExportQuery {
@@ -54,7 +54,7 @@ pub async fn export_json(
 ) -> Result<Response, (StatusCode, Json<serde_json::Value>)> {
     let rows = fetch_heartbeats(&state, user.id, q.start, q.end)
         .await
-        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e.to_string()}))))?;
+        .map_err(|e| error_handling::handle_database_error(e))?;
 
     let data: Vec<serde_json::Value> = rows.into_iter().map(|r| {
         json!({
@@ -86,7 +86,7 @@ pub async fn export_csv(
 ) -> Result<Response, (StatusCode, Json<serde_json::Value>)> {
     let rows = fetch_heartbeats(&state, user.id, q.start, q.end)
         .await
-        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e.to_string()}))))?;
+        .map_err(|e| error_handling::handle_database_error(e))?;
 
     let mut csv = String::from("time,project,file,language,branch,duration_seconds,is_write,editor\n");
     for r in rows {

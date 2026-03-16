@@ -163,6 +163,37 @@
             font-family: var(--font-mono);
         }
 
+        @media (max-width: 768px) {
+            .docs-layout {
+                flex-direction: column;
+                gap: 32px;
+                margin: 32px auto;
+            }
+
+            .docs-sidebar {
+                width: 100%;
+                position: static;
+            }
+
+            .sidebar-list {
+                flex-direction: row;
+                flex-wrap: wrap;
+                gap: 6px 16px;
+            }
+
+            .sidebar-group {
+                margin-bottom: 16px;
+            }
+
+            .docs-content h1 {
+                font-size: 24px;
+            }
+
+            .ide-grid {
+                grid-template-columns: repeat(auto-fill, minmax(100px, 1fr));
+            }
+        }
+
         /* UI Framework — preview container */
         .ui-preview {
             border: 1px solid var(--border);
@@ -208,7 +239,8 @@
     <nav class="nav" id="nav">
         <div class="container nav-inner">
             <a href="/" class="nav-logo">CodeTrackr</a>
-            <ul class="nav-links">
+            <button class="nav-toggle" id="nav-toggle" aria-label="Menu" onclick="document.getElementById('nav-links').classList.toggle('open')"><span></span><span></span><span></span></button>
+            <ul class="nav-links" id="nav-links">
                 <li><a href="/#stats" class="nav-link">Stats</a></li>
                 <li><a href="/#leaderboard" class="nav-link">Leaderboard</a></li>
                 <li><a href="/docs" class="nav-link" style="color:var(--text-main);">Docs</a></li>
@@ -1036,7 +1068,7 @@ fetch('/api/v1/plugins/streak-notifier/rpc/get-streak', {
                     <li>Duplicate entries are silently ignored (<code>ON CONFLICT DO NOTHING</code>).</li>
                     <li>You can send up to thousands of records in a single request — batch large imports to avoid timeouts.</li>
                     <li>The <code>time</code> field accepts Unix timestamps (float or integer). If omitted, the server time is used.</li>
-                    <li>This endpoint is intentionally format-agnostic: write a small script to convert any source (WakaTime, CodeTime, custom logs) into this schema and POST it.</li>
+                    <li>This endpoint is intentionally format-agnostic: write a small script to convert any source (existing trackers, custom logs) into this schema and POST it.</li>
                 </ul>
             </section>
 
@@ -1078,7 +1110,7 @@ fetch('/api/v1/plugins/streak-notifier/rpc/get-streak', {
 
             <section id="creating-ide-plugins">
                 <h2>Creating IDE Plugins</h2>
-                <p>This guide will help you create a new CodeTrackr plugin for your text editor/IDE. Inspired by the WakaTime plugin ecosystem, CodeTrackr plugins monitor your coding activity and send heartbeats to the CodeTrackr API to track time spent on projects.</p>
+                <p>This guide will help you create a new CodeTrackr plugin for your text editor/IDE. CodeTrackr plugins monitor your coding activity and send heartbeats to the CodeTrackr API to track time spent on projects.</p>
 
                 <p>Let us know if you're building a CodeTrackr plugin! We can help you via email and promote your plugin to all CodeTrackr users.</p>
 
@@ -2525,7 +2557,7 @@ button.onclick = async () => {
             </section>
 
             <div class="docs-footer">
-                © 2026 CodeTrackr Contributors. Data Privacy Guaranteed.
+                CodeTrackr · Deployed on Leapcell · Powered by Rust · Open source (AGPL-3.0) · Livrädo Sandoval.
             </div>
         </main>
     </div>

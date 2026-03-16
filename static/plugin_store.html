@@ -17,7 +17,8 @@
   <nav class="nav" id="nav">
     <div class="container nav-inner">
       <a href="/" class="nav-logo" id="nav-logo">CodeTrackr</a>
-      <ul class="nav-links">
+      <button class="nav-toggle" id="nav-toggle" aria-label="Menu" onclick="document.getElementById('nav-links').classList.toggle('open')"><span></span><span></span><span></span></button>
+      <ul class="nav-links" id="nav-links">
         <li><a href="/#stats" class="nav-link">Stats</a></li>
         <li><a href="/#leaderboard" class="nav-link">Leaderboard</a></li>
         <li><a href="/docs" class="nav-link">Docs</a></li>
@@ -122,7 +123,7 @@
   <!-- FOOTER -->
   <footer class="footer">
     <div class="container footer-inner">
-      <span>© 2026 CodeTrackr. Built with Rust + Axum.</span>
+      <span>CodeTrackr · Deployed on Leapcell · Powered by Rust · Open source (AGPL-3.0) · Livrädo Sandoval.</span>
       <div class="footer-links">
         <a href="/docs">Docs</a>
         <a href="https://github.com/codetrackr" target="_blank">Github</a>
@@ -367,15 +368,31 @@
     </div>
   </div>
 
-  <script src="/static/js/app.js?v=5"></script>
-  <script>
+  <script type="module" src="/static/js/app.js?v=5"></script>
+  <script type="module">
+    import { api } from '/static/js/modules/api.js';
+    import { loadPluginStore } from '/static/js/modules/plugin-store.js';
+    import { loadAdminPanelIfNeeded } from '/static/js/modules/dashboard.js';
+    import { loadThemeStore, loadInstalledThemes, initThemeEditor } from '/static/js/modules/theme.js';
+    import { applyProFeatures, updateUserUI } from '/static/js/modules/ui.js';
+
+    // Make functions globally available for other inline scripts (e.g. onclick handlers)
+    window.api = api;
+    window.loadPluginStore = loadPluginStore;
+    window.loadAdminPanelIfNeeded = loadAdminPanelIfNeeded;
+    window.loadThemeStore = loadThemeStore;
+    window.loadInstalledThemes = loadInstalledThemes;
+    window.initThemeEditor = initThemeEditor;
+    window.applyProFeatures = applyProFeatures;
+    window.updateUserUI = updateUserUI;
+
     (async function initPluginStorePage() {
       const token = localStorage.getItem('ct_token');
       if (!token) {
         window.location.href = '/';
         return;
       }
-      currentToken = token;
+      window.currentToken = token;
 
       // Fill header
       const hour = new Date().getHours();
@@ -384,14 +401,14 @@
       if (dateEl) dateEl.textContent = new Date().toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
 
       try {
-        currentUser = await api('/user/me');
+        window.currentUser = await api('/user/me');
         const avatarEl = document.getElementById('dash-avatar');
-        if (avatarEl && currentUser.avatar_url) avatarEl.src = currentUser.avatar_url;
+        if (avatarEl && window.currentUser.avatar_url) avatarEl.src = window.currentUser.avatar_url;
         const greetEl = document.getElementById('dash-greeting');
-        if (greetEl) greetEl.textContent = `${greeting}, ${currentUser.display_name || currentUser.username}!`;
+        if (greetEl) greetEl.textContent = `${greeting}, ${window.currentUser.display_name || window.currentUser.username}!`;
         const nameEl = document.getElementById('dash-username');
-        if (nameEl) nameEl.textContent = currentUser.username;
-        applyProFeatures(currentUser);
+        if (nameEl) nameEl.textContent = window.currentUser.username;
+        applyProFeatures(window.currentUser);
         await updateUserUI();
       } catch (e) {
         console.warn('Could not load user:', e);

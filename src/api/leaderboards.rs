@@ -134,6 +134,13 @@ pub async fn get_by_language(
     Path(lang): Path<String>,
     Query(q): Query<LeaderboardQuery>,
 ) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    // Validate lang contains only alphanumeric characters
+    if !lang.chars().all(|c| c.is_alphanumeric()) {
+        return Err((StatusCode::BAD_REQUEST, Json(json!({
+            "error": "Language must contain only alphanumeric characters"
+        }))));
+    }
+    
     let limit = q.limit.unwrap_or(100).min(500);
     let offset = q.offset.unwrap_or(0);
     let week_key = format!("lb:lang:{}:{}", lang.to_lowercase(), chrono::Utc::now().format("%Y-W%W"));

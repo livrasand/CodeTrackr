@@ -1,9 +1,20 @@
+//! Core domain models shared across the application.
+//!
+//! Each struct maps to a database table (via `sqlx::FromRow`) or represents a
+//! serializable API payload. Sensitive fields (OAuth IDs, billing identifiers,
+//! key hashes) are intentionally absent from public-facing types like
+//! [`PublicUser`] and [`ApiKeyResponse`].
+
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 use chrono::{DateTime, Utc};
 
 // ── User ────────────────────────────────────────────────────────────────────
 
+/// Full user record as stored in the `users` table.
+///
+/// Contains all fields including sensitive ones (OAuth IDs, billing, key hashes).
+/// Never serialize this directly to API responses — use [`PublicUser`] instead.
 #[derive(Debug, Clone, Serialize, Deserialize, sqlx::FromRow)]
 pub struct User {
     pub id: Uuid,
@@ -13,6 +24,7 @@ pub struct User {
     pub avatar_url: Option<String>,
     pub github_id: Option<String>,
     pub gitlab_id: Option<String>,
+    pub account_number: Option<String>,
     pub plan: String,         // "free" | "pro"
     pub stripe_customer_id: Option<String>,
     pub stripe_subscription_id: Option<String>,
@@ -33,6 +45,9 @@ pub struct User {
     pub updated_at: DateTime<Utc>,
 }
 
+/// Publicly safe subset of [`User`] for API responses and leaderboards.
+///
+/// Strips all sensitive fields: email, OAuth IDs, billing identifiers, and flags.
 #[allow(dead_code)]
 #[derive(Debug, Serialize, Deserialize)]
 pub struct PublicUser {
@@ -61,6 +76,11 @@ impl From<User> for PublicUser {
 
 // ── API Key ─────────────────────────────────────────────────────────────────
 
+/// Full API key record from the `api_keys` table.
+///
+/// `key_hash` is a bcrypt/argon2 hash of the raw key and must never be exposed.
+/// Use [`ApiKeyResponse`] for list endpoints and [`ApiKeyCreated`] for the
+/// single creation response that returns the raw key.
 #[derive(Debug, Clone, Serialize, Deserialize, sqlx::FromRow)]
 pub struct ApiKey {
     pub id: Uuid,
@@ -72,6 +92,9 @@ pub struct ApiKey {
     pub created_at: DateTime<Utc>,
 }
 
+/// Safe API key representation for list/detail responses.
+///
+/// Omits `key_hash`; exposes only `key_prefix` (first 8 chars) for display.
 #[derive(Debug, Serialize)]
 pub struct ApiKeyResponse {
     pub id: Uuid,
@@ -81,6 +104,10 @@ pub struct ApiKeyResponse {
     pub created_at: DateTime<Utc>,
 }
 
+/// Response returned once when a new API key is created.
+///
+/// `key` contains the full raw key and is only returned at creation time.
+/// It is never stored in plaintext — the server only keeps `key_hash`.
 #[derive(Debug, Serialize)]
 pub struct ApiKeyCreated {
     pub id: Uuid,
@@ -91,6 +118,11 @@ pub struct ApiKeyCreated {
 
 // ── Heartbeat ───────────────────────────────────────────────────────────────
 
+/// A coding activity event recorded by the editor extension.
+///
+/// Heartbeats are the primary data source for all stats. Each heartbeat captures
+/// a moment of coding activity: the project, file, language, editor, and
+/// duration. They are immutable once stored.
 #[allow(dead_code)]
 #[derive(Debug, Clone, Serialize, Deserialize, sqlx::FromRow)]
 pub struct Heartbeat {
@@ -112,6 +144,11 @@ pub struct Heartbeat {
     pub created_at: DateTime<Utc>,
 }
 
+/// Inbound heartbeat payload from the editor extension.
+///
+/// Maps to the JSON body of `POST /api/v1/heartbeats`. `duration` defaults to 0
+/// if omitted; `is_write` defaults to `false`. `time` is a Unix timestamp
+/// (float) used to de-duplicate heartbeats submitted out of order.
 #[derive(Debug, Deserialize)]
 pub struct HeartbeatRequest {
     pub project: String,
@@ -127,11 +164,15 @@ pub struct HeartbeatRequest {
     pub editor: Option<String>,
     pub os: Option<String>,
     pub machine: Option<String>,
-    pub time: Option<f64>,  // Unix timestamp (WakaTime compat)
+    pub time: Option<f64>,  // Unix timestamp
 }
 
 // ── Stats ────────────────────────────────────────────────────────────────────
 
+/// Aggregated coding stats for a single calendar day.
+///
+/// Populated from the `daily_stats_cache` table which is refreshed periodically
+/// from raw heartbeats.
 #[allow(dead_code)]
 #[derive(Debug, Serialize, Deserialize)]
 pub struct DailyStat {
@@ -141,6 +182,7 @@ pub struct DailyStat {
     pub top_project: Option<String>,
 }
 
+/// Coding time breakdown for a single programming language.
 #[derive(Debug, Serialize, Deserialize)]
 pub struct LanguageStat {
     pub language: String,
@@ -148,6 +190,7 @@ pub struct LanguageStat {
     pub percentage: f64,
 }
 
+/// Coding time breakdown for a single project.
 #[allow(dead_code)]
 #[derive(Debug, Serialize, Deserialize)]
 pub struct ProjectStat {
@@ -157,6 +200,9 @@ pub struct ProjectStat {
     pub languages: Vec<String>,
 }
 
+/// Aggregated stats summary for a date range.
+///
+/// Returned by the stats API and used to render the dashboard overview.
 #[allow(dead_code)]
 #[derive(Debug, Serialize, Deserialize)]
 pub struct Summary {
@@ -174,6 +220,10 @@ pub struct Summary {
 
 // ── Leaderboard ──────────────────────────────────────────────────────────────
 
+/// A single entry in a public leaderboard.
+///
+/// `rank` is 1-indexed and computed by the leaderboard query. `seconds` is the
+/// total coding time for the leaderboard period.
 #[allow(dead_code)]
 #[derive(Debug, Serialize, Deserialize)]
 pub struct LeaderboardEntry {
@@ -189,6 +239,9 @@ pub struct LeaderboardEntry {
 
 // ── Claims (JWT) ─────────────────────────────────────────────────────────────
 
+/// JWT claims payload for session tokens.
+///
+/// `sub` is the user's UUID as a string. `iat` and `exp` are Unix timestamps.
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct Claims {
     pub sub: String,     // user_id

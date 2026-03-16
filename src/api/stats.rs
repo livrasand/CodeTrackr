@@ -9,7 +9,7 @@ use serde_json::json;
 use chrono::{DateTime, Utc, Duration};
 use uuid::Uuid;
 
-use crate::{AppState, auth::AuthenticatedUser, models::*};
+use crate::{AppState, auth::AuthenticatedUser, models::*, error_handling};
 
 #[derive(Deserialize)]
 pub struct StatsQuery {
@@ -93,7 +93,7 @@ pub async fn get_languages(
     )
     .bind(user.id).bind(start).bind(end)
     .fetch_all(&state.db.pool).await
-    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e.to_string()}))))?;
+    .map_err(|e| error_handling::handle_database_error(e))?;
 
     let total: i64 = rows.iter().filter_map(|r| r.seconds).sum();
 
@@ -127,7 +127,7 @@ pub async fn get_projects(
     )
     .bind(user.id).bind(start).bind(end)
     .fetch_all(&state.db.pool).await
-    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e.to_string()}))))?;
+    .map_err(|e| error_handling::handle_database_error(e))?;
 
     let projects: Vec<serde_json::Value> = rows.into_iter().map(|r| {
         json!({
@@ -157,7 +157,7 @@ pub async fn get_daily(
     )
     .bind(user.id).bind(start).bind(end)
     .fetch_all(&state.db.pool).await
-    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e.to_string()}))))?;
+    .map_err(|e| error_handling::handle_database_error(e))?;
 
     let daily: Vec<serde_json::Value> = rows.into_iter().map(|r| {
         json!({ "date": r.date, "seconds": r.seconds.unwrap_or(0) })
@@ -280,7 +280,7 @@ pub async fn get_work_types(
     )
     .bind(user.id).bind(start).bind(end)
     .fetch_all(&state.db.pool).await
-    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e.to_string()}))))?;
+    .map_err(|e| error_handling::handle_database_error(e))?;
 
     let mut writing: i64 = 0;
     let mut debugging: i64 = 0;
@@ -345,7 +345,7 @@ pub async fn get_sessions(
     )
     .bind(user.id).bind(start).bind(end)
     .fetch_all(&state.db.pool).await
-    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e.to_string()}))))?;
+    .map_err(|e| error_handling::handle_database_error(e))?;
 
     if rows.is_empty() {
         return Ok(Json(json!({ "sessions": [], "total_sessions": 0 })));

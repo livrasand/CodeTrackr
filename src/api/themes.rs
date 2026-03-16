@@ -7,7 +7,7 @@ use serde::Deserialize;
 use serde_json::{json, Value};
 use uuid::Uuid;
 
-use crate::{AppState, auth::AuthenticatedUser};
+use crate::{AppState, auth::AuthenticatedUser, error_handling};
 
 type ApiResult = Result<Json<Value>, (StatusCode, Json<Value>)>;
 
@@ -45,21 +45,10 @@ fn sanitize_variables(vars: &Value) -> Value {
     Value::Object(clean)
 }
 
-fn sanitize_custom_css(css: Option<&str>) -> Option<String> {
-    let css = css?;
-    // Only allow :root overrides — strip everything else
-    // Simple approach: allow only property declarations inside :root {}
-    if css.len() > 4000 {
-        return None;
-    }
-    // Reject dangerous patterns
-    let lower = css.to_lowercase();
-    if lower.contains("url(") || lower.contains("expression(") || lower.contains("@import")
-        || lower.contains("javascript") || lower.contains("<script")
-    {
-        return None;
-    }
-    Some(css.to_string())
+fn sanitize_custom_css(_css: Option<&str>) -> Option<String> {
+    // Security: Reject all custom CSS - only allow CSS variables
+    // This prevents XSS via CSS injection (url(), expression(), @import, etc.)
+    None
 }
 
 // ── Handlers ──────────────────────────────────────────────────────────────────
@@ -151,7 +140,7 @@ pub async fn publish_theme(
     .bind(&clean_css)
     .execute(&state.db.pool)
     .await
-    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e.to_string()}))))?;
+    .map_err(|e| error_handling::handle_database_error(e))?;
 
     Ok(Json(json!({ "status": "published" })))
 }
@@ -180,7 +169,7 @@ pub async fn install_theme(
     .bind(theme_id)
     .execute(&state.db.pool)
     .await
-    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e.to_string()}))))?;
+    .map_err(|e| error_handling::handle_database_error(e))?;
 
     sqlx::query(
         "UPDATE theme_store SET install_count = install_count + 1 WHERE id = $1"
@@ -205,7 +194,7 @@ pub async fn uninstall_theme(
     .bind(theme_id)
     .execute(&state.db.pool)
     .await
-    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e.to_string()}))))?;
+    .map_err(|e| error_handling::handle_database_error(e))?;
 
     // If this was the active theme, clear it
     sqlx::query(
@@ -250,7 +239,7 @@ pub async fn apply_theme(
     .bind(&clean_vars)
     .execute(&state.db.pool)
     .await
-    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e.to_string()}))))?;
+    .map_err(|e| error_handling::handle_database_error(e))?;
 
     Ok(Json(json!({ "status": "applied" })))
 }
@@ -269,7 +258,7 @@ pub async fn get_active_theme(
     .bind(user.id)
     .fetch_optional(&state.db.pool)
     .await
-    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e.to_string()}))))?;
+    .map_err(|e| error_handling::handle_database_error(e))?;
 
     match prefs {
         Some(row) => {

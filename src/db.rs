@@ -1,5 +1,48 @@
+//! Database connection pool and migration runner.
+//!
+//! This module exposes [`Database`], a thin wrapper around a `sqlx` [`PgPool`] that
+//! also manages schema migrations. Migrations are stored as `.sql` files under
+//! `./migrations/` and are applied manually (without advisory locks) to stay within
+//! Leapcell's `statement_timeout` constraints.
+//!
+//! # Dollar-quote helpers
+//! [`find_dollar_quote_end`] and the internal [`split_sql_statements`] handle
+//! PostgreSQL dollar-quoted string literals (`$$...$$`, `$tag$...$tag$`) so that
+//! semicolons inside function bodies are not treated as statement separators.
+
 use sqlx::{PgPool, postgres::PgPoolOptions};
 use anyhow::Result;
+
+/// Encuentra el closing tag correspondiente para un dollar-quote PostgreSQL.
+/// Retorna la posición después del closing tag, o None si no se encuentra.
+pub fn find_dollar_quote_end(sql: &str, start_pos: usize) -> Option<usize> {
+    let bytes = sql.as_bytes();
+    let len = bytes.len();
+    let i = start_pos;
+    
+    if i >= len || bytes[i] != b'$' {
+        return None;
+    }
+    
+    // Look for a dollar-quote tag: $[optional_tag]$
+    let mut j = i + 1;
+    while j < len && (bytes[j].is_ascii_alphanumeric() || bytes[j] == b'_') {
+        j += 1;
+    }
+    if j < len && bytes[j] == b'$' {
+        // Found opening tag, e.g. `$$` or `$tag$`
+        let tag = &sql[i..=j];
+        let tag_end = j + 1;
+        // Search for the matching closing tag
+        if let Some(pos) = sql[tag_end..].find(tag) {
+            Some(tag_end + pos + tag.len())
+        } else {
+            None
+        }
+    } else {
+        None
+    }
+}
 
 /// Split SQL text into individual statements on `;`, but do NOT split
 /// inside dollar-quoted blocks (`$$...$$` or `$tag$...$tag$`).
@@ -12,23 +55,10 @@ fn split_sql_statements(sql: &str) -> Vec<&str> {
 
     while i < len {
         if bytes[i] == b'$' {
-            // Look for a dollar-quote tag: $[optional_tag]$
-            let mut j = i + 1;
-            while j < len && (bytes[j].is_ascii_alphanumeric() || bytes[j] == b'_') {
-                j += 1;
-            }
-            if j < len && bytes[j] == b'$' {
-                // Found opening tag, e.g. `$$` or `$tag$`
-                let tag = &sql[i..=j];
-                let tag_end = j + 1;
-                // Search for the matching closing tag
-                if let Some(pos) = sql[tag_end..].find(tag) {
-                    i = tag_end + pos + tag.len();
-                    continue;
-                } else {
-                    // No closing tag found; treat rest as one block
-                    break;
-                }
+            // Try to find matching dollar-quote end
+            if let Some(end_pos) = find_dollar_quote_end(sql, i) {
+                i = end_pos;
+                continue;
             }
         }
 
@@ -49,12 +79,25 @@ fn split_sql_statements(sql: &str) -> Vec<&str> {
     statements
 }
 
+/// Connection pool wrapper for the PostgreSQL database.
+///
+/// Holds a `sqlx` [`PgPool`] configured with up to 20 connections (min 2) and a
+/// 10-second acquire timeout. Clone is cheap — the underlying pool is `Arc`-backed.
 #[derive(Clone)]
 pub struct Database {
     pub pool: PgPool,
 }
 
 impl Database {
+    /// Creates a new [`Database`] by connecting to the given PostgreSQL URL.
+    ///
+    /// Configures the pool with:
+    /// - `max_connections = 20`
+    /// - `min_connections = 2`
+    /// - `acquire_timeout = 10s`
+    ///
+    /// # Errors
+    /// Propagates any connection error from `sqlx`.
     pub async fn new(url: &str) -> Result<Self> {
         let pool = PgPoolOptions::new()
             .max_connections(20)
@@ -66,6 +109,18 @@ impl Database {
         Ok(Self { pool })
     }
 
+    /// Applies pending database migrations, bypassing SQLx's advisory lock.
+    ///
+    /// Standard `sqlx::migrate!()` acquires a PostgreSQL advisory lock that can
+    /// time out in hosted environments with short `statement_timeout` settings.
+    /// This method checks the `_sqlx_migrations` table directly, skips already-
+    /// applied versions, and executes each statement individually to stay under
+    /// the timeout. Dollar-quoted blocks are preserved intact by
+    /// [`split_sql_statements`].
+    ///
+    /// # Errors
+    /// Returns `Err` if the migrations table cannot be created, if any individual
+    /// SQL statement fails, or if the migration version cannot be recorded.
     pub async fn migrate_with_url(&self, _url: &str) -> Result<()> {
         tracing::info!("Running database migrations...");
 

@@ -7,7 +7,7 @@ use serde_json::json;
 use uuid::Uuid;
 use chrono::Utc;
 
-use crate::{AppState, auth::AuthenticatedUser, models::*};
+use crate::{AppState, auth::AuthenticatedUser, models::*, error_handling};
 
 pub async fn create_heartbeat(
     AuthenticatedUser(user): AuthenticatedUser,
@@ -43,7 +43,7 @@ pub async fn create_heartbeat(
     .bind(recorded_at)
     .execute(&state.db.pool)
     .await
-    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e.to_string()}))))?;
+    .map_err(|e| error_handling::handle_database_error(e))?;
 
     // Ejecutar hooks de lifecycle para 'on_heartbeat'
     let event_data = json!({
@@ -77,8 +77,13 @@ pub async fn create_heartbeat(
     // Also publish to Redis (only using ZINCRBY for leaderboards since Leapcell Serverless Redis disables PUBLISH/SUBSCRIBE)
     {
         let week_key = format!("lb:week:{}", chrono::Utc::now().format("%Y-W%W"));
-        let lang_key = body.language.as_ref().map(|lang| {
-            format!("lb:lang:{}:{}", lang.to_lowercase(), chrono::Utc::now().format("%Y-W%W"))
+        let lang_key = body.language.as_ref().and_then(|lang| {
+            // Validate language contains only alphanumeric characters
+            if lang.chars().all(|c| c.is_alphanumeric()) {
+                Some(format!("lb:lang:{}:{}", lang.to_lowercase(), chrono::Utc::now().format("%Y-W%W")))
+            } else {
+                None
+            }
         });
 
         if let Ok(mut conn) = state.redis.get_conn().await {
