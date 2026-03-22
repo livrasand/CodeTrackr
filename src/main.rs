@@ -2,6 +2,7 @@ mod api;
 mod auth;
 mod db;
 mod error_handling;
+mod middleware;
 mod models;
 mod realtime;
 mod services;
@@ -9,6 +10,8 @@ mod services;
 use axum::{
     Router,
     routing::{get, post, delete},
+    extract::{Request, ConnectInfo},
+    middleware::from_fn,
 };
 use std::net::SocketAddr;
 use tower_http::{
@@ -16,19 +19,83 @@ use tower_http::{
     trace::TraceLayer,
     compression::CompressionLayer,
 };
-use tower_governor::{GovernorLayer, governor::GovernorConfigBuilder};
+use tower_governor::{GovernorLayer, governor::GovernorConfigBuilder, key_extractor::KeyExtractor};
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
 use db::Database;
 use realtime::RedisPool;
 use services::plugins;
 
+// Extractor de IP real que prioriza headers de proxy/CDN sobre la IP de conexión
+#[derive(Clone)]
+pub struct RealIpKeyExtractor;
+
+impl KeyExtractor for RealIpKeyExtractor {
+    type Key = String;
+
+    fn extract<T>(&self, req: &Request<T>) -> Result<Self::Key, tower_governor::GovernorError> {
+        // Prioridad de headers para detectar IP real (Cloudflare, Nginx, AWS ALB, etc.)
+        let headers = req.headers();
+        
+        // 1. Cloudflare Connecting IP
+        if let Some(ip) = headers.get("CF-Connecting-IP") {
+            if let Ok(ip_str) = ip.to_str() {
+                return Ok(ip_str.to_string());
+            }
+        }
+        
+        // 2. True Client IP (Cloudflare Enterprise)
+        if let Some(ip) = headers.get("True-Client-IP") {
+            if let Ok(ip_str) = ip.to_str() {
+                return Ok(ip_str.to_string());
+            }
+        }
+        
+        // 3. X-Forwarded-For (estándar, tomar primera IP)
+        if let Some(xff) = headers.get("X-Forwarded-For") {
+            if let Ok(xff_str) = xff.to_str() {
+                // XFF puede contener múltiples IPs: "client, proxy1, proxy2"
+                // Tomamos la primera que es la del cliente real
+                if let Some(first_ip) = xff_str.split(',').next() {
+                    let ip = first_ip.trim();
+                    if !ip.is_empty() {
+                        return Ok(ip.to_string());
+                    }
+                }
+            }
+        }
+        
+        // 4. X-Real-IP (Nginx común)
+        if let Some(ip) = headers.get("X-Real-IP") {
+            if let Ok(ip_str) = ip.to_str() {
+                return Ok(ip_str.to_string());
+            }
+        }
+        
+        // 5. X-Client-IP (Apache)
+        if let Some(ip) = headers.get("X-Client-IP") {
+            if let Ok(ip_str) = ip.to_str() {
+                return Ok(ip_str.to_string());
+            }
+        }
+        
+        // 6. Fallback a IP de conexión (sin proxy)
+        if let Some(ConnectInfo(addr)) = req.extensions().get::<ConnectInfo<SocketAddr>>() {
+            return Ok(addr.ip().to_string());
+        }
+        
+        // 7. Último recurso: IP genérica para evitar bloqueos
+        tracing::warn!("No se pudo determinar IP del cliente, usando fallback");
+        Ok("unknown".to_string())
+    }
+}
+
 #[derive(Clone)]
 pub struct AppState {
     pub db: Database,
     pub redis: RedisPool,
     pub config: AppConfig,
-    pub exchange_codes: std::sync::Arc<tokio::sync::Mutex<std::collections::HashMap<String, String>>>,
+    pub exchange_codes: std::sync::Arc<tokio::sync::Mutex<std::collections::HashMap<String, (serde_json::Value, std::time::Instant)>>>,
 }
 
 #[derive(Clone)]
@@ -88,19 +155,84 @@ async fn main() -> anyhow::Result<()> {
     let db = db.unwrap();
     db.migrate_with_url(&database_url).await?;
 
-    tracing::info!("Connecting to Redis...");
-    let redis = RedisPool::new(&redis_url).await?;
+    // Retry Redis connection at startup
+    let mut redis = None;
+    for i in 1..=5 {
+        tracing::info!("Connecting to Redis (attempt {}/5)...", i);
+        match RedisPool::new(&redis_url).await {
+            Ok(rp) => {
+                redis = Some(rp);
+                break;
+            }
+            Err(e) => {
+                if i == 5 {
+                    return Err(anyhow::anyhow!("Failed to connect to Redis after 5 attempts: {}", e));
+                }
+                tracing::warn!("Redis connection failed, retrying in 2s... Error: {}", e);
+                tokio::time::sleep(tokio::time::Duration::from_secs(2)).await;
+            }
+        }
+    }
+    let redis = redis.unwrap();
 
-    let state = AppState { db, redis, config, exchange_codes: std::sync::Arc::new(tokio::sync::Mutex::new(std::collections::HashMap::new())) };
+    let state = AppState { 
+        db, 
+        redis, 
+        config, 
+        exchange_codes: std::sync::Arc::new(tokio::sync::Mutex::new(std::collections::HashMap::new())) 
+    };
+
+    // TODO: Fix plugin workers system - temporarily disabled
+    // Inicializar worker pool para plugins
+    // let worker_count = std::env::var("PLUGIN_WORKER_COUNT")
+    //     .unwrap_or_else(|_| "4".to_string())
+    //     .parse()
+    //     .unwrap_or(4);
+    // services::plugin_workers::init_worker_pool(worker_count, state.clone());
 
     // Start plugin tick loop
     plugins::start_tick_loop(state.clone());
+
+    // Start exchange codes cleanup loop
+    tokio::spawn({
+        let state = state.clone();
+        async move {
+            let mut interval = tokio::time::interval(std::time::Duration::from_secs(60)); // Cleanup every minute
+            loop {
+                interval.tick().await;
+                let mut codes = state.exchange_codes.lock().await;
+                codes.retain(|_, (_, created_at)| {
+                    created_at.elapsed() < std::time::Duration::from_secs(300) // 5 minutes
+                });
+            }
+        }
+    });
+
+    // Start refresh tokens cleanup loop
+    tokio::spawn({
+        let state = state.clone();
+        async move {
+            let mut interval = tokio::time::interval(std::time::Duration::from_secs(3600)); // Every hour
+            loop {
+                interval.tick().await;
+                if let Err(e) = services::refresh_tokens::RefreshTokenService::cleanup_expired_tokens(&state).await {
+                    tracing::error!("Refresh token cleanup failed: {}", e);
+                } else {
+                    tracing::debug!("Refresh token cleanup completed");
+                }
+            }
+        }
+    });
 
     // Redis pub/sub subscriber is disabled because Leapcell Serverless Redis does not support SUBSCRIBE.
     // Realtime events will flow seamlessly through the local Tokio broadcast channel instead.
     // realtime::start_redis_subscriber(redis_url.clone()).await;
 
     let frontend_url = state.config.frontend_url.clone();
+    let allow_null_origin = frontend_url.starts_with("http://localhost")
+        || frontend_url.starts_with("https://localhost")
+        || frontend_url.starts_with("http://127.0.0.1")
+        || frontend_url.starts_with("https://127.0.0.1");
     let cors = CorsLayer::new()
         .allow_origin(tower_http::cors::AllowOrigin::predicate(
             move |origin: &axum::http::HeaderValue, _: &axum::http::request::Parts| {
@@ -111,6 +243,8 @@ async fn main() -> anyhow::Result<()> {
                     || s.starts_with("http://127.0.0.1:")
                     || s.starts_with("https://127.0.0.1:")
                     || s == frontend_url
+                    // Permitir origen "null" en entornos locales (file:// o sandboxed)
+                    || (allow_null_origin && s == "null")
             },
         ))
         .allow_methods([
@@ -151,6 +285,7 @@ async fn main() -> anyhow::Result<()> {
         // SPA fallback
         .fallback(api::frontend::serve_index)
         .with_state(state)
+        .layer(from_fn(middleware::csp::csp_middleware))
         .layer(cors)
         .layer(TraceLayer::new_for_http())
         .layer(CompressionLayer::new());
@@ -171,20 +306,22 @@ async fn main() -> anyhow::Result<()> {
 
 fn api_routes(state: AppState, plugin_router: Router<AppState>) -> Router<AppState> {
 
-    // Rate limiting for webhook only (more restrictive)
+    // Rate limiting para webhook con IP real
     let webhook_governor_conf = GovernorConfigBuilder::default()
-        .per_second(10)
-        .burst_size(5)
+        .per_second(50)
+        .burst_size(20)
+        .key_extractor(RealIpKeyExtractor)
         .finish()
         .unwrap();
     let webhook_governor_layer = GovernorLayer {
         config: std::sync::Arc::new(webhook_governor_conf),
     };
 
-    // General rate limiting
+    // Rate limiting general con IP real
     let governor_conf = GovernorConfigBuilder::default()
-        .per_second(200)
-        .burst_size(50)
+        .per_second(500)
+        .burst_size(100)
+        .key_extractor(RealIpKeyExtractor)
         .finish()
         .unwrap();
     let governor_layer = GovernorLayer {
@@ -193,7 +330,7 @@ fn api_routes(state: AppState, plugin_router: Router<AppState>) -> Router<AppSta
 
     // Webhook gets its own router with its own restrictive rate limiting
     let webhook_router = Router::new()
-        .route("/billing/webhook", post(api::billing::stripe_webhook))
+        // .route("/billing/webhook", post(api::billing::stripe_webhook))  // TODO: Fix billing webhook
         .with_state(state.clone())
         .layer(webhook_governor_layer);
 
@@ -218,6 +355,9 @@ fn api_routes(state: AppState, plugin_router: Router<AppState>) -> Router<AppSta
         .route("/keys", get(api::keys::list_keys))
         .route("/keys", post(api::keys::create_key))
         .route("/keys/:id", delete(api::keys::delete_key))
+        // Refresh Tokens
+        .route("/refresh-tokens", get(api::auth::list_refresh_tokens))
+        .route("/refresh-tokens/:id", delete(api::auth::revoke_refresh_token))
         // Export
         .route("/export/json", get(api::export::export_json))
         .route("/export/csv", get(api::export::export_csv))
@@ -235,7 +375,7 @@ fn api_routes(state: AppState, plugin_router: Router<AppState>) -> Router<AppSta
         // Plugin editor sandbox
         .route("/cteditor/run", post(api::cteditor::run_plugin))
         // Plugin RPC — user-defined endpoints inside store plugin scripts
-        .route("/plugins/:name/rpc/:handler", post(api::plugin_rpc::rpc_call))
+        // .route("/plugins/:name/rpc/:handler", post(api::plugin_rpc::rpc_call))  // TODO: Fix plugin RPC
         // WebSocket ticket (single-use, TTL 30s — evita exponer JWT en query string)
         .route("/ws-ticket", post(realtime::ws_handler::create_ws_ticket))
         // Health
@@ -282,16 +422,18 @@ fn api_routes(state: AppState, plugin_router: Router<AppState>) -> Router<AppSta
         .route("/billing/checkout", post(api::billing::create_checkout_session))
         .route("/billing/portal", post(api::billing::create_portal_session))
         .with_state(state)
-        .layer(governor_layer)  // Rate limiting general para API
+        .layer(from_fn(middleware::csp::api_csp_middleware))
+        .layer(governor_layer)  // Rate limiting general con IP real
         .merge(webhook_router)
 }
 
 
 fn auth_routes(state: AppState) -> Router<AppState> {
-    // Rate limiting for auth endpoints (more restrictive)
+    // Rate limiting para auth con IP real (más restrictivo)
     let auth_governor_conf = GovernorConfigBuilder::default()
-        .per_second(100)
-        .burst_size(20)
+        .per_second(250)
+        .burst_size(50)
+        .key_extractor(RealIpKeyExtractor)
         .finish()
         .unwrap();
     let auth_governor_layer = GovernorLayer {
@@ -308,6 +450,8 @@ fn auth_routes(state: AppState) -> Router<AppState> {
         .route("/anonymous/login", post(auth::anonymous::login_with_account_number))
         .route("/anonymous/verify", post(auth::anonymous::verify_account_number))
         .route("/logout", post(auth::logout))
+        .route("/refresh", post(auth::refresh_token))
         .with_state(state)
-        .layer(auth_governor_layer)  // Rate limiting específico para auth
+        .layer(from_fn(middleware::csp::api_csp_middleware))
+        .layer(auth_governor_layer)  // Rate limiting específico para auth con IP real
 }

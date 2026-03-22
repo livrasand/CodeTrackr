@@ -55,7 +55,7 @@ export async function applyActiveTheme() {
     return;
   }
   try {
-    const data = await api('/themes/active');
+    const data = await fetchActiveTheme();
     // Merge: base theme variables first, then user custom_vars on top
     const merged = Object.assign({}, data.variables || {}, data.custom_vars || {});
     applyCssVars(merged);
@@ -92,54 +92,147 @@ export function switchStoreTab(tab, btn) {
 // Theme store functionality
 let _installedThemeIds = new Set();
 let _activeThemeId = null;
+let _themesCache = null;
+let _themesFetchedAt = 0;
+let _loadThemesInFlight = null;
+let _loadInstalledInFlight = null;
+const THEMES_CACHE_MS = 15000;
+let _activeThemeCache = null;
+let _activeThemeFetchedAt = 0;
+let _activeThemeInFlight = null;
+let _installedThemesCache = null;
+let _installedThemesFetchedAt = 0;
+let _installedThemesInFlight = null;
+const ACTIVE_THEME_CACHE_MS = 15000;
+const INSTALLED_THEMES_CACHE_MS = 15000;
 
-export async function loadThemeStore() {
-  const grid = document.getElementById('theme-store-grid');
-  if (!grid) return;
-  try {
-    const { themes } = await api('/themes');
-    if (!themes || themes.length === 0) {
-      grid.innerHTML = `<div style="color:var(--text-muted); padding:16px; grid-column:1/-1;">No themes published yet. Be the first!</div>`;
-      return;
-    }
-    grid.innerHTML = themes.map(t => _renderThemeCard(t)).join('');
-  } catch (e) {
-    grid.innerHTML = `<div style="color:var(--text-muted); padding:16px;">Failed to load themes.</div>`;
+function fetchActiveTheme(force = false) {
+  const now = Date.now();
+  if (!force && _activeThemeCache && (now - _activeThemeFetchedAt) < ACTIVE_THEME_CACHE_MS) {
+    return Promise.resolve(_activeThemeCache);
   }
+  if (_activeThemeInFlight) return _activeThemeInFlight;
+  _activeThemeInFlight = api('/themes/active')
+    .then((data) => {
+      _activeThemeCache = data;
+      _activeThemeFetchedAt = Date.now();
+      return data;
+    })
+    .finally(() => {
+      _activeThemeInFlight = null;
+    });
+  return _activeThemeInFlight;
 }
 
-export async function loadInstalledThemes() {
+function fetchInstalledThemes(force = false) {
+  const now = Date.now();
+  if (!force && _installedThemesCache && (now - _installedThemesFetchedAt) < INSTALLED_THEMES_CACHE_MS) {
+    return Promise.resolve(_installedThemesCache);
+  }
+  if (_installedThemesInFlight) return _installedThemesInFlight;
+  _installedThemesInFlight = api('/themes/installed')
+    .then((data) => {
+      _installedThemesCache = data;
+      _installedThemesFetchedAt = Date.now();
+      return data;
+    })
+    .finally(() => {
+      _installedThemesInFlight = null;
+    });
+  return _installedThemesInFlight;
+}
+
+function _renderThemeStore(themes) {
+  const grid = document.getElementById('theme-store-grid');
+  if (!grid) return;
+  if (!themes || themes.length === 0) {
+    grid.innerHTML = `<div style="color:var(--text-muted); padding:16px; grid-column:1/-1;">No themes published yet. Be the first!</div>`;
+    return;
+  }
+  grid.innerHTML = themes.map(t => _renderThemeCard(t)).join('');
+}
+
+export async function loadThemeStore(force = false) {
+  const grid = document.getElementById('theme-store-grid');
+  if (!grid) return;
+
+  const now = Date.now();
+  if (!force && _themesCache && (now - _themesFetchedAt) < THEMES_CACHE_MS) {
+    _renderThemeStore(_themesCache);
+    return;
+  }
+
+  if (_loadThemesInFlight) return _loadThemesInFlight;
+
+  _loadThemesInFlight = (async () => {
+    try {
+      const { themes } = await api('/themes');
+      _themesCache = themes || [];
+      _themesFetchedAt = Date.now();
+      _renderThemeStore(_themesCache);
+    } catch (e) {
+      if (_themesCache) {
+        _renderThemeStore(_themesCache);
+      } else if (grid) {
+        grid.innerHTML = `<div style="color:var(--text-muted); padding:16px;">Failed to load themes.</div>`;
+      }
+    } finally {
+      _loadThemesInFlight = null;
+    }
+  })();
+
+  return _loadThemesInFlight;
+}
+
+export async function loadInstalledThemes(force = false) {
   const bar = document.getElementById('theme-installed-bar');
   const list = document.getElementById('theme-installed-list');
   if (!list || !getCurrentToken()) return;
-  try {
-    const [installedData, activeData] = await Promise.all([
-      api('/themes/installed'),
-      api('/themes/active'),
-    ]);
-    _activeThemeId = activeData.active_theme_id || null;
-    _installedThemeIds = new Set((installedData.themes || []).map(t => t.id));
+  if (_loadInstalledInFlight) return _loadInstalledInFlight;
 
-    if (installedData.themes && installedData.themes.length > 0) {
-      if (bar) bar.style.display = '';
-      list.innerHTML = installedData.themes.map(t => {
-        const isActive = t.id === _activeThemeId;
-        return `
-          <div style="display:inline-flex; align-items:center; gap:6px; background:var(--bg-card); border:1px solid ${isActive ? 'var(--accent,var(--border-focus))' : 'var(--border)'}; border-radius:var(--radius-pill); padding:4px 10px; font-size:11px;">
-            <span>${t.icon || '🎨'}</span>
-            <span style="color:var(--text-main);">${t.display_name}</span>
-            ${isActive
-              ? `<span style="color:var(--text-dark);">✓ active</span>`
-              : `<button onclick="activateTheme('${t.id}',${JSON.stringify(t.variables)},${JSON.stringify(t.custom_css||null)})" style="background:none;border:none;color:var(--text-dark);cursor:pointer;font-size:11px;padding:0;">Apply</button>`
-            }
-            <button onclick="uninstallTheme('${t.id}',this)" style="background:none;border:none;color:var(--text-dark);cursor:pointer;font-size:11px;padding:0 2px;">✕</button>
-          </div>`;
-      }).join('');
+  _loadInstalledInFlight = (async () => {
+    try {
+      const [installedData, activeData] = await Promise.all([
+        fetchInstalledThemes(force),
+        fetchActiveTheme(force),
+      ]);
+      _activeThemeId = activeData.active_theme_id || null;
+      _installedThemeIds = new Set((installedData.themes || []).map(t => t.id));
 
-      // Refresh store grid to reflect install state
-      loadThemeStore();
+      if (installedData.themes && installedData.themes.length > 0) {
+        if (bar) bar.style.display = '';
+        list.innerHTML = installedData.themes.map(t => {
+          const isActive = t.id === _activeThemeId;
+          return `
+            <div style="display:inline-flex; align-items:center; gap:6px; background:var(--bg-card); border:1px solid ${isActive ? 'var(--accent,var(--border-focus))' : 'var(--border)'}; border-radius:var(--radius-pill); padding:4px 10px; font-size:11px;">
+              <span>${t.icon || '🎨'}</span>
+              <span style="color:var(--text-main);">${t.display_name}</span>
+              ${isActive
+                ? `<span style="color:var(--text-dark);">✓ active</span>`
+                : `<button onclick="activateTheme('${t.id}',${JSON.stringify(t.variables)},${JSON.stringify(t.custom_css||null)})" style="background:none;border:none;color:var(--text-dark);cursor:pointer;font-size:11px;padding:0;">Apply</button>`
+              }
+              <button onclick="uninstallTheme('${t.id}',this)" style="background:none;border:none;color:var(--text-dark);cursor:pointer;font-size:11px;padding:0 2px;">✕</button>
+            </div>`;
+        }).join('');
+      } else {
+        if (bar) bar.style.display = 'none';
+        list.innerHTML = '';
+      }
+
+      // Refresh store grid to reflect install state without spamming /themes
+      if (_themesCache) {
+        _renderThemeStore(_themesCache);
+      } else {
+        await loadThemeStore();
+      }
+    } catch (_) {
+      // ignore
+    } finally {
+      _loadInstalledInFlight = null;
     }
-  } catch (_) {}
+  })();
+
+  return _loadInstalledInFlight;
 }
 
 function _renderThemeCard(t) {
@@ -187,7 +280,7 @@ export async function installTheme(themeId, btn) {
   try {
     await api(`/themes/install/${themeId}`, { method: 'POST' });
     _installedThemeIds.add(themeId);
-    await loadInstalledThemes();
+    await loadInstalledThemes(true);
     showToast('Theme installed!', [], 2500);
   } catch (e) {
     showToast('Install failed: ' + e.message, [], 3000, 'warning');
@@ -206,7 +299,7 @@ export async function uninstallTheme(themeId, btn) {
       clearCssVars();
       localStorage.removeItem('ct_theme_vars');
     }
-    await loadInstalledThemes();
+    await loadInstalledThemes(true);
     showToast('Theme uninstalled.', [], 2500);
   } catch (e) {
     showToast('Failed: ' + e.message, [], 3000, 'warning');
@@ -224,7 +317,7 @@ export async function activateTheme(themeId, variables, customCss) {
       method: 'POST',
       body: JSON.stringify({ theme_id: themeId, custom_vars: {} }),
     });
-    await loadInstalledThemes();
+    await loadInstalledThemes(true);
     showToast('Theme applied!', [], 2000);
     // Sync editor inputs with new theme values
     _syncEditorInputs(variables || {});
@@ -257,7 +350,7 @@ export async function initThemeEditor() {
   const token = getCurrentToken();
   if (token) {
     try {
-      const data = await api('/themes/active');
+      const data = await fetchActiveTheme();
       savedVars = Object.assign({}, data.variables || {}, data.custom_vars || {});
     } catch (_) {}
   } else {

@@ -3,15 +3,68 @@ use axum::{
     response::Json,
     http::{StatusCode, HeaderMap},
     body::Bytes,
+    extract::Query,
 };
 use serde::Deserialize;
 use serde_json::{json, Value};
 use hmac::{Hmac, Mac};
 use sha2::Sha256;
+use uuid::Uuid;
 
 use crate::{AppState, auth::AuthenticatedUser, error_handling};
 
+// Webhook helpers are wired when Stripe webhooks are enabled.
+#[allow(dead_code)]
 type HmacSha256 = Hmac<Sha256>;
+
+// CSRF token for webhook validation
+#[allow(dead_code)]
+#[derive(Deserialize)]
+pub struct WebhookQuery {
+    pub csrf_token: Option<String>,
+}
+
+// Generate and store CSRF token for webhook validation
+async fn generate_webhook_csrf_token(state: &AppState, user_id: &str) -> String {
+    let token = Uuid::new_v4().to_string();
+    let key = format!("webhook_csrf:{}", user_id);
+    
+    if let Ok(mut conn) = state.redis.get_conn().await {
+        let _: Result<(), redis::RedisError> = redis::cmd("SETEX")
+            .arg(&key)
+            .arg(300) // 5 minutes TTL
+            .arg(&token)
+            .query_async(&mut conn)
+            .await;
+    }
+    
+    token
+}
+
+// Verify webhook CSRF token
+#[allow(dead_code)]
+async fn verify_webhook_csrf_token(state: &AppState, user_id: &str, token: &str) -> bool {
+    let key = format!("webhook_csrf:{}", user_id);
+    
+    if let Ok(mut conn) = state.redis.get_conn().await {
+        let stored_token: Option<String> = redis::cmd("GET")
+            .arg(&key)
+            .query_async(&mut conn)
+            .await
+            .ok();
+        
+        if let Some(stored) = stored_token {
+            // Consume the token (single-use)
+            let _: Result<(), _> = redis::cmd("DEL")
+                .arg(&key)
+                .query_async(&mut conn)
+                .await;
+            return stored == token;
+        }
+    }
+    
+    false
+}
 
 // ── Create Checkout Session ───────────────────────────────────────────────────
 
@@ -51,8 +104,13 @@ pub async fn create_checkout_session(
         .await;
     }
 
-    // Create checkout session
+    // Create user_id_str for CSRF token
     let user_id_str = user.id.to_string();
+    
+    // Generate CSRF token for webhook validation
+    let csrf_token = generate_webhook_csrf_token(&state, &user_id_str).await;
+    
+    // Create checkout session
     let client = reqwest::Client::new();
     let params = [
         ("mode", "subscription"),
@@ -62,6 +120,7 @@ pub async fn create_checkout_session(
         ("success_url", success_url.as_str()),
         ("cancel_url", cancel_url.as_str()),
         ("metadata[user_id]", user_id_str.as_str()),
+        ("metadata[csrf_token]", csrf_token.as_str()),
     ];
 
     let resp = client
@@ -155,10 +214,12 @@ pub async fn create_portal_session(
 
 // ── Stripe Webhook ────────────────────────────────────────────────────────────
 
+#[allow(dead_code)]
 pub async fn stripe_webhook(
     State(state): State<AppState>,
     headers: HeaderMap,
     body: Bytes,
+    Query(query): Query<WebhookQuery>,
 ) -> Result<Json<Value>, (StatusCode, Json<Value>)> {
     let webhook_secret = std::env::var("STRIPE_WEBHOOK_SECRET")
         .map_err(|_| (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": "Webhook secret not configured"}))))?;
@@ -179,7 +240,7 @@ pub async fn stripe_webhook(
 
     match event_type {
         "checkout.session.completed" => {
-            handle_checkout_completed(&state, &event).await?;
+            handle_checkout_completed(&state, &event, query.csrf_token.as_deref()).await?;
         }
         "customer.subscription.updated" => {
             handle_subscription_updated(&state, &event).await?;
@@ -195,17 +256,31 @@ pub async fn stripe_webhook(
 
 // ── Webhook event handlers ────────────────────────────────────────────────────
 
+#[allow(dead_code)]
 async fn handle_checkout_completed(
     state: &AppState,
     event: &Value,
+    query_csrf_token: Option<&str>,
 ) -> Result<(), (StatusCode, Json<Value>)> {
     let session = &event["data"]["object"];
     let user_id_str = session["metadata"]["user_id"].as_str().unwrap_or("");
     let subscription_id = session["subscription"].as_str().unwrap_or("");
     let customer_id = session["customer"].as_str().unwrap_or("");
+    let csrf_token = session["metadata"]["csrf_token"].as_str().unwrap_or("");
 
     if user_id_str.is_empty() || subscription_id.is_empty() {
         return Ok(());
+    }
+
+    // Verify CSRF token if provided
+    if let Some(query_token) = query_csrf_token {
+        if !verify_webhook_csrf_token(state, user_id_str, query_token).await {
+            tracing::warn!("Invalid CSRF token for webhook processing user {}", user_id_str);
+            return Err((StatusCode::BAD_REQUEST, Json(json!({"error": "Invalid CSRF token"}))));
+        }
+    } else if !csrf_token.is_empty() {
+        // If no query token but we have one in metadata, require it
+        return Err((StatusCode::BAD_REQUEST, Json(json!({"error": "CSRF token required"}))));
     }
 
     let user_id = uuid::Uuid::parse_str(user_id_str)
@@ -225,6 +300,7 @@ async fn handle_checkout_completed(
     Ok(())
 }
 
+#[allow(dead_code)]
 async fn handle_subscription_updated(
     state: &AppState,
     event: &Value,
@@ -255,6 +331,7 @@ async fn handle_subscription_updated(
     Ok(())
 }
 
+#[allow(dead_code)]
 async fn handle_subscription_deleted(
     state: &AppState,
     event: &Value,
@@ -308,6 +385,7 @@ async fn get_or_create_customer(
         .ok_or_else(|| data["error"]["message"].as_str().unwrap_or("Stripe error").to_string())
 }
 
+#[allow(dead_code)]
 fn verify_stripe_signature(
     payload: &[u8],
     sig_header: &str,

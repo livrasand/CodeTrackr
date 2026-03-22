@@ -3,12 +3,14 @@ pub mod gitlab;
 pub mod anonymous;
 
 use axum::{
-    extract::State,
-    http::StatusCode,
+    extract::{Path, State, ConnectInfo},
+    http::{StatusCode, header},
     response::{Json, Response},
 };
+use serde::{Deserialize, Serialize};
 use serde_json::json;
-use crate::{AppState, error_handling};
+use crate::{AppState, error_handling, services::refresh_tokens::RefreshTokenService};
+use sqlx::Row;
 
 pub async fn logout(
     State(state): State<AppState>,
@@ -18,7 +20,9 @@ pub async fn logout(
     if let Ok(claims) = verify_jwt(token, &state.config.jwt_secret) {
         let now = chrono::Utc::now().timestamp();
         let ttl = (claims.exp - now).max(1);
-        let key = format!("jwt_blacklist:{}", token);
+        
+        // Blacklist por jti en lugar del token completo
+        let key = format!("jwt_blacklist:{}", claims.jti);
         if let Ok(mut conn) = state.redis.get_conn().await {
             let _: Result<(), _> = redis::cmd("SETEX")
                 .arg(&key)
@@ -40,18 +44,173 @@ pub async fn logout(
     Ok(response)
 }
 
+/// Lista todos los refresh tokens activos del usuario
+pub async fn list_refresh_tokens(
+    AuthenticatedUser(user): AuthenticatedUser,
+    State(state): State<AppState>,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let tokens = RefreshTokenService::list_user_tokens(user.id, &state)
+        .await
+        .map_err(|e| {
+            tracing::error!("Failed to list refresh tokens: {}", e);
+            (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": "Failed to list tokens"})))
+        })?;
+    
+    let tokens_json: Vec<serde_json::Value> = tokens.into_iter().map(|t| {
+        json!({
+            "id": t.id,
+            "device_id": t.device_id,
+            "device_info": t.device_info,
+            "ip_address": t.ip_address,
+            "user_agent": t.user_agent,
+            "created_at": t.created_at,
+            "last_used_at": t.last_used_at,
+            "expires_at": t.expires_at,
+            "usage_count": t.usage_count,
+            "suspicious_activity": t.suspicious_activity
+        })
+    }).collect();
+    
+    Ok(Json(json!({
+        "tokens": tokens_json,
+        "count": tokens_json.len()
+    })))
+}
+
+/// Revoca un refresh token específico
+pub async fn revoke_refresh_token(
+    AuthenticatedUser(user): AuthenticatedUser,
+    State(state): State<AppState>,
+    Path(token_id): Path<uuid::Uuid>,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    // Verificar que el token pertenece al usuario
+    let _token = sqlx::query(
+        "SELECT token_hash FROM refresh_tokens WHERE id = $1 AND user_id = $2 AND is_active = true"
+    )
+    .bind(token_id)
+    .bind(user.id)
+    .fetch_optional(&state.db.pool)
+    .await
+    .map_err(|e| {
+        tracing::error!("Database error: {}", e);
+        (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": "Database error"})))
+    })?
+    .ok_or_else(|| {
+        (StatusCode::NOT_FOUND, Json(json!({"error": "Token not found"})))
+    })?;
+    
+    // Revocar el token
+    sqlx::query(
+        "UPDATE refresh_tokens SET is_active = false, rotated_at = NOW() WHERE id = $1"
+    )
+    .bind(token_id)
+    .execute(&state.db.pool)
+    .await
+    .map_err(|e| {
+        tracing::error!("Failed to revoke token: {}", e);
+        (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": "Failed to revoke token"})))
+    })?;
+    
+    Ok(Json(json!({"message": "Token revoked successfully"})))
+}
+
+#[derive(Deserialize)]
+pub struct RefreshRequest {
+    pub refresh_token: String,
+    #[allow(dead_code)]
+    pub device_id: String,
+}
+
+#[derive(Serialize)]
+pub struct RefreshResponse {
+    pub access_token: String,
+    pub refresh_token: String,
+}
+
+pub async fn refresh_token(
+    State(state): State<AppState>,
+    ConnectInfo(conn): ConnectInfo<std::net::SocketAddr>,
+    headers: axum::http::HeaderMap,
+    Json(payload): Json<RefreshRequest>,
+) -> Result<Response, (StatusCode, Json<serde_json::Value>)> {
+    // Extract client information for security monitoring
+    let ip_address = Some(conn.ip().to_string());
+    let user_agent = headers.get("user-agent")
+        .and_then(|h| h.to_str().ok())
+        .map(|s| s.to_string());
+    
+    // Rotate refresh token with security checks
+    let token_response = RefreshTokenService::rotate_token(
+        &payload.refresh_token,
+        ip_address,
+        user_agent,
+        &state,
+    ).await.map_err(|e| {
+        tracing::warn!("Refresh token rotation failed: {}", e);
+        (StatusCode::UNAUTHORIZED, Json(json!({"error": e})))
+    })?;
+    
+    // Get user_id from the rotated token
+    let token_hash = RefreshTokenService::hash_token(&payload.refresh_token, &state.config.jwt_secret)
+        .map_err(|e| {
+            tracing::error!("Token hashing error: {}", e);
+            (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": "Authentication failed"})))
+        })?;
+    
+    let old_token_row = sqlx::query(
+        "SELECT user_id FROM refresh_tokens WHERE token_hash = $1"
+    )
+    .bind(&token_hash)
+    .fetch_optional(&state.db.pool)
+    .await
+    .map_err(|e| {
+        tracing::error!("Database error: {}", e);
+        (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": "Authentication failed"})))
+    })?
+    .ok_or_else(|| {
+        (StatusCode::UNAUTHORIZED, Json(json!({"error": "Invalid token"})))
+    })?;
+    let old_token_user_id: uuid::Uuid = old_token_row.try_get("user_id")
+        .map_err(|e| {
+            tracing::error!("Failed to get user_id from token row: {}", e);
+            (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": "Authentication failed"})))
+        })?;
+    
+    // Generate new access token
+    let new_access_token = create_access_token(&old_token_user_id.to_string(), &state.config.jwt_secret)
+        .map_err(|e| {
+            tracing::error!("Access token creation failed: {}", e);
+            (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": "Authentication failed"})))
+        })?;
+    
+    let response = Json(json!(RefreshResponse {
+        access_token: new_access_token,
+        refresh_token: token_response.refresh_token,
+    }));
+    
+    Ok(Response::builder()
+        .status(StatusCode::OK)
+        .header(header::CONTENT_TYPE, "application/json")
+        .body(response.to_string().into())
+        .map_err(|e| error_handling::handle_auth_error(e))?)
+}
+
 // ── JWT ──────────────────────────────────────────────────────────────────────
 
 use jsonwebtoken::{encode, decode, Header, Algorithm, Validation, EncodingKey, DecodingKey};
 use crate::models::Claims;
 use chrono::Utc;
 
-pub fn create_jwt(user_id: &str, secret: &str) -> anyhow::Result<String> {
+pub fn create_jwt(user_id: &str, secret: &str, token_type: crate::models::TokenType, expires_in_seconds: i64) -> anyhow::Result<String> {
+    use uuid::Uuid;
+    
     let now = Utc::now().timestamp();
     let claims = Claims {
         sub: user_id.to_string(),
         iat: now,
-        exp: now + 60 * 60 * 24 * 30, // 30 days
+        exp: now + expires_in_seconds,
+        jti: Uuid::new_v4().to_string(),
+        token_type,
     };
     let token = encode(
         &Header::default(),
@@ -59,6 +218,17 @@ pub fn create_jwt(user_id: &str, secret: &str) -> anyhow::Result<String> {
         &EncodingKey::from_secret(secret.as_bytes()),
     )?;
     Ok(token)
+}
+
+// Función de compatibilidad temporal para access tokens de 15 minutos
+pub fn create_access_token(user_id: &str, secret: &str) -> anyhow::Result<String> {
+    create_jwt(user_id, secret, crate::models::TokenType::Access, 15 * 60) // 15 minutos
+}
+
+// Función para refresh tokens de 7 días
+#[allow(dead_code)]
+pub fn create_refresh_token(user_id: &str, secret: &str) -> anyhow::Result<String> {
+    create_jwt(user_id, secret, crate::models::TokenType::Refresh, 7 * 24 * 60 * 60) // 7 días
 }
 
 pub fn verify_jwt(token: &str, secret: &str) -> anyhow::Result<Claims> {
@@ -99,8 +269,13 @@ impl FromRequestParts<AppState> for AuthenticatedUser {
 
         // Try JWT first
         if let Ok(claims) = verify_jwt(&token, &state.config.jwt_secret) {
-            // Fix #10: Check JWT blacklist (populated on logout)
-            let blacklist_key = format!("jwt_blacklist:{}", token);
+            // Validar que sea un access token (los refresh tokens no deben usarse para autenticación)
+            if !matches!(claims.token_type, crate::models::TokenType::Access) {
+                return Err((StatusCode::UNAUTHORIZED, Json(json!({"error": "Invalid token type for authentication"}))));
+            }
+
+            // Check JWT blacklist by jti (populated on logout)
+            let blacklist_key = format!("jwt_blacklist:{}", claims.jti);
             let is_blacklisted = async {
                 let mut conn = state.redis.get_conn().await.ok()?;
                 let val: Option<String> = redis::cmd("GET")

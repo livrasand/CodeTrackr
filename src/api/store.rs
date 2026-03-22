@@ -15,6 +15,7 @@ use crate::{AppState, auth::AuthenticatedUser, error_handling};
 pub struct StorePlugin {
     pub id: Uuid,
     pub author_id: Uuid,
+    pub author_username: Option<String>,
     pub name: String,
     pub display_name: String,
     pub description: Option<String>,
@@ -31,6 +32,7 @@ pub struct StorePlugin {
     pub install_count: i32,
     pub avg_rating: f64,
     pub rating_count: i32,
+    pub has_external_access: bool,
     pub created_at: DateTime<Utc>,
 }
 
@@ -46,6 +48,7 @@ pub struct PublishPluginRequest {
     pub api_endpoint: Option<String>,
     pub script: Option<String>,
     pub settings_schema: Option<Value>,
+    pub has_external_access: bool,
 }
 
 #[derive(Deserialize)]
@@ -68,19 +71,22 @@ pub async fn list_store_plugins(
         r#"SELECT p.id, p.author_id, p.name, p.display_name, p.description, p.version,
                   p.repository, p.icon, p.widget_type, p.api_endpoint, p.script,
                   p.settings_schema, p.is_published, p.is_banned, p.ban_reason,
-                  p.install_count,
+                  p.install_count, p.has_external_access,
                   COALESCE(p.avg_rating, 0.0)::float8 as avg_rating,
                   COALESCE(p.rating_count, 0) as rating_count,
                   p.created_at,
                   u.username as author_username
            FROM plugin_store p
-           JOIN users u ON u.id = p.author_id
+           LEFT JOIN users u ON u.id = p.author_id
            WHERE p.is_published = true AND p.is_banned = false
            ORDER BY p.install_count DESC, p.created_at DESC"#
     )
     .fetch_all(&state.db.pool)
     .await
-    .unwrap_or_default();
+    .map_err(|e| {
+        tracing::error!("Error listing store plugins: {}", e);
+        error_handling::handle_database_error(e)
+    })?;
 
     let plugins: Vec<Value> = rows.iter().map(|r| {
         use sqlx::Row;
@@ -98,6 +104,7 @@ pub async fn list_store_plugins(
             "install_count": r.get::<i32, _>("install_count"),
             "avg_rating": r.get::<f64, _>("avg_rating"),
             "rating_count": r.get::<i32, _>("rating_count"),
+            "has_external_access": r.get::<bool, _>("has_external_access"),
             "created_at": r.get::<DateTime<Utc>, _>("created_at"),
         })
     }).collect();
@@ -122,8 +129,8 @@ pub async fn publish_plugin(
 
     let plugin = sqlx::query_as::<_, StorePlugin>(
         r#"INSERT INTO plugin_store
-               (author_id, name, display_name, description, version, repository, icon, widget_type, api_endpoint, script, settings_schema)
-           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+               (author_id, name, display_name, description, version, repository, icon, widget_type, api_endpoint, script, settings_schema, has_external_access, is_published)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, true)
            ON CONFLICT (name) DO UPDATE SET
              display_name   = EXCLUDED.display_name,
              description    = EXCLUDED.description,
@@ -134,12 +141,15 @@ pub async fn publish_plugin(
              api_endpoint   = EXCLUDED.api_endpoint,
              script         = EXCLUDED.script,
              settings_schema = EXCLUDED.settings_schema,
+             has_external_access = EXCLUDED.has_external_access,
+             is_published   = true,
              updated_at     = NOW()
-           RETURNING id, author_id, name, display_name, description, version, repository,
+           RETURNING id, author_id, (SELECT username FROM users WHERE id = $1) as author_username, name, display_name, description, version, repository,
                      icon, widget_type, api_endpoint, script, settings_schema,
                      is_published, is_banned, ban_reason, install_count,
                      COALESCE(avg_rating, 0)::float8 AS avg_rating,
                      COALESCE(rating_count, 0) AS rating_count,
+                     has_external_access,
                      created_at"#
     )
     .bind(user.id)
@@ -153,6 +163,7 @@ pub async fn publish_plugin(
     .bind(&body.api_endpoint)
     .bind(&body.script)
     .bind(&body.settings_schema)
+    .bind(body.has_external_access)
     .fetch_one(&state.db.pool)
     .await
     .map_err(|e| error_handling::handle_database_error(e))?;
@@ -204,7 +215,10 @@ async fn install_plugin_recursive(user_id: Uuid, plugin_id: Uuid, state: &AppSta
             .bind(current_id)
             .fetch_all(&state.db.pool)
             .await
-            .unwrap_or_default();
+            .map_err(|e| {
+                tracing::error!("Error fetching plugin dependencies for user {}: {}", user_id, e);
+                error_handling::handle_database_error(e)
+            })?;
 
             for dep_name in deps {
                 if let Some(dep_id) = sqlx::query_scalar::<_, Uuid>(
@@ -280,7 +294,10 @@ pub async fn get_installed_plugins(
     .bind(user.id)
     .fetch_all(&state.db.pool)
     .await
-    .unwrap_or_default();
+    .map_err(|e| {
+        tracing::error!("Error fetching installed plugins for user {}: {}", user.id, e);
+        error_handling::handle_database_error(e)
+    })?;
 
     Ok(Json(json!({ "installed": plugins })))
 }
@@ -424,17 +441,22 @@ pub async fn admin_list_plugins(
     }
 
     let plugins = sqlx::query_as::<_, StorePlugin>(
-        r#"SELECT id, author_id, name, display_name, description, version, repository, icon,
-                  widget_type, api_endpoint, script, settings_schema, is_published, is_banned,
-                  ban_reason, install_count,
-                  COALESCE(avg_rating, 0.0)::float8 as avg_rating,
-                  COALESCE(rating_count, 0) as rating_count,
-                  created_at
-           FROM plugin_store ORDER BY created_at DESC"#
+        r#"SELECT p.id, p.author_id, u.username as author_username, p.name, p.display_name, p.description, p.version, p.repository, p.icon,
+                  p.widget_type, p.api_endpoint, p.script, p.settings_schema, p.is_published, p.is_banned,
+                  p.ban_reason, p.install_count,
+                  COALESCE(p.avg_rating, 0.0)::float8 as avg_rating,
+                  COALESCE(p.rating_count, 0) as rating_count,
+                  p.created_at
+           FROM plugin_store p
+           LEFT JOIN users u ON u.id = p.author_id
+           ORDER BY p.created_at DESC"#
     )
     .fetch_all(&state.db.pool)
     .await
-    .unwrap_or_default();
+    .map_err(|e| {
+        tracing::error!("Error listing admin plugins: {}", e);
+        error_handling::handle_database_error(e)
+    })?;
 
     Ok(Json(json!({ "plugins": plugins })))
 }
@@ -623,7 +645,7 @@ pub async fn get_plugin_detail(
     let plugin = sqlx::query_as::<_, StorePlugin>(
         r#"SELECT id, author_id, name, display_name, description, version, repository, icon,
                   widget_type, api_endpoint, script, settings_schema, is_published, is_banned,
-                  ban_reason, install_count,
+                  ban_reason, install_count, has_external_access,
                   COALESCE(avg_rating, 0.0)::float8 as avg_rating,
                   COALESCE(rating_count, 0) as rating_count,
                   created_at

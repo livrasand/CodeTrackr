@@ -25,6 +25,7 @@ pub struct User {
     pub github_id: Option<String>,
     pub gitlab_id: Option<String>,
     pub account_number: Option<String>,
+    pub is_anonymous: bool,
     pub plan: String,         // "free" | "pro"
     pub stripe_customer_id: Option<String>,
     pub stripe_subscription_id: Option<String>,
@@ -237,6 +238,45 @@ pub struct LeaderboardEntry {
     pub country: Option<String>,
 }
 
+// ── Refresh Token ─────────────────────────────────────────────────────────────
+
+/// Refresh token record with rotation tracking.
+///
+/// Stores refresh tokens with device binding and security monitoring.
+/// Tokens are rotated on each use for enhanced security.
+#[derive(Debug, Clone, Serialize, Deserialize, sqlx::FromRow)]
+pub struct RefreshToken {
+    pub id: Uuid,
+    pub user_id: Uuid,
+    pub token_hash: String,
+    pub device_id: String,
+    pub device_info: Option<serde_json::Value>,
+    pub ip_address: Option<String>,
+    pub user_agent: Option<String>,
+    pub is_active: bool,
+    pub created_at: DateTime<Utc>,
+    pub last_used_at: DateTime<Utc>,
+    pub expires_at: DateTime<Utc>,
+    pub rotated_at: Option<DateTime<Utc>>,
+    pub usage_count: i32,
+    pub suspicious_activity: bool,
+}
+
+/// Request payload for refresh token creation.
+#[derive(Debug, Deserialize)]
+pub struct CreateRefreshTokenRequest {
+    pub device_id: String,
+    pub device_info: Option<serde_json::Value>,
+}
+
+/// Response when creating a new refresh token.
+#[derive(Debug, Serialize)]
+pub struct RefreshTokenResponse {
+    pub refresh_token: String,  // Raw token (only returned once)
+    pub device_id: String,
+    pub expires_at: DateTime<Utc>,
+}
+
 // ── Claims (JWT) ─────────────────────────────────────────────────────────────
 
 /// JWT claims payload for session tokens.
@@ -247,4 +287,13 @@ pub struct Claims {
     pub sub: String,     // user_id
     pub iat: i64,
     pub exp: i64,
+    pub jti: String,     // JWT ID para revocación granular
+    pub token_type: TokenType,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+#[serde(rename_all = "lowercase")]
+pub enum TokenType {
+    Access,
+    Refresh,
 }

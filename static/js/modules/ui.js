@@ -5,6 +5,7 @@
 
 import { isLoggedIn, getCurrentUser, setCurrentUser } from './auth.js';
 import { api } from './api.js';
+import { avatarUrlForUser } from './avatar.js';
 
 // DOM utilities
 export const $ = (id) => document.getElementById(id);
@@ -26,7 +27,7 @@ export async function updateUserUI() {
       const user = getCurrentUser();
       if (authItem) authItem.style.display = 'none';
       if (userItem) userItem.style.display = 'block';
-      if (avatar && user.avatar_url) avatar.src = user.avatar_url;
+      if (avatar) avatar.src = avatarUrlForUser(user);
       if (username) username.textContent = user.username;
 
       const publishBtn = $('btn-publish-plugin');

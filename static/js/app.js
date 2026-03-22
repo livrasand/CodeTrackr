@@ -8,7 +8,7 @@ import { initAuth, initLandingPage } from './modules/init.js';
 import { initNav, handlePopState } from './modules/navigation.js';
 import { logout } from './modules/auth.js';
 import { applyActiveTheme } from './modules/theme.js';
-import { connectWebSocket } from './modules/websocket.js';
+import { connectWebSocket, closeWebSocket } from './modules/websocket.js';
 import { getCurrentToken } from './modules/auth.js';
 import { showLanding } from './modules/router.js';
 import { getWebSocket } from './modules/websocket.js';
@@ -34,6 +34,10 @@ window.addEventListener('popstate', handlePopState);
 // Handle visibility change for WebSocket reconnection
 document.addEventListener('visibilitychange', () => {
   const dash = document.getElementById('dashboard');
+  if (document.visibilityState === 'hidden') {
+    closeWebSocket();
+    return;
+  }
   if (document.visibilityState === 'visible' && getCurrentToken() && dash && !dash.classList.contains('hidden')) {
     const ws = getWebSocket();
     if (!ws || ws.readyState === WebSocket.CLOSED) {
@@ -43,4 +47,3 @@ document.addEventListener('visibilitychange', () => {
 });
 
 console.log('CodeTrackr modular app loaded');
-

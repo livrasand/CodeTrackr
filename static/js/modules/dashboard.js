@@ -9,6 +9,7 @@ import { api, fmt } from './api.js';
 import { getCurrentUser, setCurrentUser, getCurrentToken } from './auth.js';
 import { connectWebSocket } from './websocket.js';
 import { openPublicProfile } from './profile.js';
+import { avatarUrlForUser } from './avatar.js';
 
 export async function loadDashboard() {
   showDashboard();
@@ -18,13 +19,14 @@ export async function loadDashboard() {
   const greeting = hour < 12 ? 'Good morning' : hour < 18 ? 'Good afternoon' : 'Good evening';
 
   try {
-    const user = await api('/user/me');
-    setCurrentUser(user);
+    const cachedUser = getCurrentUser();
+    const user = cachedUser || await api('/user/me');
+    if (!cachedUser) setCurrentUser(user);
     
     const nameEl = $('dash-username');
     if (nameEl) nameEl.textContent = user.username;
     const avatarEl = $('dash-avatar');
-    if (avatarEl && user.avatar_url) avatarEl.src = user.avatar_url;
+    if (avatarEl) avatarEl.src = avatarUrlForUser(user);
     const greetEl = $('dash-greeting');
     if (greetEl) greetEl.textContent = `${greeting}, ${user.display_name || user.username}!`;
     applyProFeatures(user);
@@ -357,9 +359,61 @@ async function loadPluginPanels() {
 
 function runPluginScript(script, container, token) {
   try {
-    // Wrap the script so it exposes a render(container, token) function
-    const fn = new Function('container', 'token', script);
-    fn(container, token);
+    // Crear sandbox iframe para aislar el código del plugin
+    const iframe = document.createElement('iframe');
+    iframe.style.cssText = 'width:100%; height:400px; border:none; border-radius:4px;';
+    iframe.sandbox = 'allow-scripts';
+    
+    // Crear HTML seguro para el sandbox
+    const sandboxHTML = `
+      <!DOCTYPE html>
+      <html>
+        <head>
+          <meta charset="utf-8">
+          <style>
+            body { margin:0; padding:12px; font-family:system-ui; font-size:14px; }
+            .plugin-container { min-height:300px; }
+          </style>
+        </head>
+        <body>
+          <div class="plugin-container" id="plugin-container"></div>
+          <script>
+            // API segura limitada para el plugin
+            const safeAPI = {
+              container: document.getElementById('plugin-container'),
+              token: '${token}',
+              fetch: function(url, options) {
+                // Solo permitir fetch al mismo dominio
+                if (url.startsWith('/') || url.includes(window.location.hostname)) {
+                  return fetch(url, options);
+                }
+                throw new Error('External requests not allowed');
+              }
+            };
+            
+            // Ejecutar script con API limitada
+            try {
+              (function() { ${script.replace(/`/g, '\\`').replace(/\$/g, '\\$')} }).call(safeAPI);
+            } catch (e) {
+              safeAPI.container.innerHTML = '<span style="color:red;">⚠ Plugin error: ' + e.message + '</span>';
+            }
+          </script>
+        </body>
+      </html>
+    `;
+    
+    container.innerHTML = '';
+    container.appendChild(iframe);
+    
+    iframe.onload = () => {
+      try {
+        iframe.contentDocument.body.innerHTML = sandboxHTML;
+      } catch (e) {
+        container.textContent = '⚠ Plugin sandbox error';
+        console.warn('Plugin sandbox error:', e);
+      }
+    };
+    
   } catch (e) {
     container.textContent = '⚠ Plugin error';
     console.warn('Plugin script error:', e);
@@ -403,15 +457,29 @@ function initKeyActions() {
   }
 }
 
-// Admin panel
 export async function loadAdminPanelIfNeeded() {
   const user = getCurrentUser();
-  if (!user) return;
-  if (!user.is_admin) return;
+  if (!user || !user.is_admin) return;
+  
   const panel = $('admin-panel');
   if (panel) panel.style.display = 'block';
+  
   await Promise.allSettled([loadAdminPlugins(), loadAdminReports()]);
 }
+
+export function adminShowTab(tab, btn) {
+  const tabs = ['plugins', 'reports'];
+  tabs.forEach(t => {
+    const el = $(`admin-tab-${t}`);
+    if (el) el.style.display = t === tab ? 'block' : 'none';
+  });
+  
+  // Update button active states
+  const parent = btn.parentNode;
+  parent.querySelectorAll('.code-tab').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+}
+window.adminShowTab = adminShowTab;
 
 // Profile settings
 async function loadProfileSettings() {
@@ -448,11 +516,55 @@ async function loadProfileSettings() {
 
 // Placeholder for functions that need to be implemented
 async function loadAdminPlugins() {
-  // Implementation needed
+  try {
+    const { plugins } = await api('/store/admin/plugins');
+    const container = $('admin-plugins-list');
+    if (!container || !plugins) return;
+    
+    container.innerHTML = plugins.map(p => `
+      <div style="display:flex; justify-content:space-between; align-items:center; padding:8px; border-bottom:1px solid var(--border);">
+        <div style="font-size:12px;">
+          <strong>${p.display_name}</strong> by @${p.author_username || 'unknown'} · v${p.version} · ${p.install_count} installs
+          ${p.is_banned ? ' <span style="color:#e53;">(Banned)</span>' : ''}
+        </div>
+        <div style="display:flex; gap:6px;">
+          <button class="btn" style="padding:2px 8px; font-size:10px;" onclick="adminBanPlugin('${p.id}', ${!p.is_banned})">${p.is_banned ? 'Unban' : 'Ban'}</button>
+          <button class="btn" style="padding:2px 8px; font-size:10px; color:#e53;" onclick="adminDeletePlugin('${p.id}')">Delete</button>
+        </div>
+      </div>
+    `).join('');
+  } catch (e) {
+    console.warn('Admin plugins error:', e);
+  }
 }
 
 async function loadAdminReports() {
-  // Implementation needed
+  try {
+    const { reports } = await api('/store/admin/reports');
+    const container = $('admin-reports-list');
+    const badge = $('admin-reports-badge');
+    if (!container || !reports) return;
+    
+    if (badge) {
+      const unresolved = reports.filter(r => !r.resolved).length;
+      badge.textContent = unresolved;
+      badge.style.display = unresolved > 0 ? 'inline-block' : 'none';
+    }
+
+    container.innerHTML = reports.map(r => `
+      <div style="display:flex; flex-direction:column; gap:4px; padding:8px; border:1px solid var(--border); border-radius:4px; position:relative; ${r.resolved ? 'opacity:0.6;' : ''}">
+        <div style="display:flex; justify-content:space-between; align-items:flex-start;">
+          <strong style="font-size:12px;">${r.reason.toUpperCase()} on ${r.plugin_name}</strong>
+          <span style="font-size:10px; color:var(--text-dark);">${new Date(r.created_at).toLocaleDateString()}</span>
+        </div>
+        <p style="font-size:11px; margin:2px 0;">${r.description || 'No description'}</p>
+        <div style="font-size:10px; color:var(--text-muted);">Reported by @${r.reporter_username}</div>
+        ${!r.resolved ? `<button class="btn" style="position:absolute; bottom:8px; right:8px; padding:2px 8px; font-size:10px;" onclick="adminResolveReport('${r.id}')">Resolve</button>` : ''}
+      </div>
+    `).join('');
+  } catch (e) {
+    console.warn('Admin reports error:', e);
+  }
 }
 
 function openPluginDiffModal(displayName, prevVersion, newVersion, oldScript, newScript, pluginId) {

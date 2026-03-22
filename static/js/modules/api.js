@@ -3,18 +3,166 @@
    Handles: API communication, HTTP requests
    ═══════════════════════════════════════════════════════ */
 
-import { getCurrentToken } from './auth.js';
+import { getCurrentToken, getRefreshToken, refreshAccessToken, logout } from './auth.js';
 
 const API = '/api/v1';
+let refreshInFlight = null;
+
+const MAX_CONCURRENT = 6;
+const MIN_INTERVAL_MS = 100; // ~10 req/s to avoid server burst limits
+const MAX_RETRIES = 3;
+
+let inFlight = 0;
+let lastRequestAt = 0;
+let pumpTimer = null;
+const queue = [];
+const inflightGets = new Map();
+let meCache = null;
+let meCacheAt = 0;
+const ME_CACHE_MS = 10000;
+
+function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function schedule(task) {
+  return new Promise((resolve, reject) => {
+    queue.push({ task, resolve, reject });
+    pump();
+  });
+}
+
+function pump() {
+  if (inFlight >= MAX_CONCURRENT || queue.length === 0) return;
+  const now = Date.now();
+  const wait = Math.max(0, MIN_INTERVAL_MS - (now - lastRequestAt));
+  if (wait > 0) {
+    if (pumpTimer) return;
+    pumpTimer = setTimeout(() => {
+      pumpTimer = null;
+      pump();
+    }, wait);
+    return;
+  }
+
+  const { task, resolve, reject } = queue.shift();
+  inFlight += 1;
+  lastRequestAt = Date.now();
+  Promise.resolve()
+    .then(task)
+    .then((result) => {
+      inFlight -= 1;
+      resolve(result);
+      pump();
+    })
+    .catch((err) => {
+      inFlight -= 1;
+      reject(err);
+      pump();
+    });
+}
+
+async function refreshIfNeeded() {
+  if (refreshInFlight) return refreshInFlight;
+  refreshInFlight = refreshAccessToken()
+    .catch((err) => {
+      refreshInFlight = null;
+      throw err;
+    })
+    .then((data) => {
+      refreshInFlight = null;
+      return data;
+    });
+  return refreshInFlight;
+}
+
+async function fetchWithRetry(url, options) {
+  let res;
+  for (let attempt = 0; attempt <= MAX_RETRIES; attempt += 1) {
+    res = await fetch(url, options);
+    if (res.status !== 429) return res;
+
+    const retryAfter = res.headers.get('Retry-After');
+    const retryAfterMs = retryAfter && !Number.isNaN(Number(retryAfter))
+      ? Number(retryAfter) * 1000
+      : null;
+    const backoffMs = Math.min(2000 * (2 ** attempt), 8000);
+    const jitter = Math.floor(Math.random() * 250);
+    await sleep(retryAfterMs ?? (backoffMs + jitter));
+  }
+  return res;
+}
+
+async function parseJson(res) {
+  if (res.status === 204) return null;
+  const text = await res.text();
+  if (!text) return null;
+  return JSON.parse(text);
+}
+
+async function apiInternal(path, options = {}) {
+  const headers = { 'Content-Type': 'application/json', ...(options.headers || {}) };
+  let token = getCurrentToken();
+  if (token) headers['Authorization'] = `Bearer ${token}`;
+
+  const url = `${API}${path}`;
+  const res = await fetchWithRetry(url, { credentials: 'same-origin', ...options, headers });
+
+  if (res.status === 401) {
+    const refreshToken = getRefreshToken();
+    if (refreshToken) {
+      try {
+        await refreshIfNeeded();
+        token = getCurrentToken();
+        const retryHeaders = { 'Content-Type': 'application/json', ...(options.headers || {}) };
+        if (token) retryHeaders['Authorization'] = `Bearer ${token}`;
+        const retryRes = await fetchWithRetry(url, { credentials: 'same-origin', ...options, headers: retryHeaders });
+        if (!retryRes.ok) throw new Error(`API error ${retryRes.status}`);
+        return parseJson(retryRes);
+      } catch (e) {
+        logout();
+        throw new Error('API error 401');
+      }
+    } else if (token) {
+      logout();
+    }
+  }
+
+  if (!res.ok) throw new Error(`API error ${res.status}`);
+  return parseJson(res);
+}
 
 export async function api(path, options = {}) {
-  const headers = { 'Content-Type': 'application/json', ...(options.headers || {}) };
-  const token = getCurrentToken();
-  if (token) headers['Authorization'] = `Bearer ${token}`;
-  
-  const res = await fetch(`${API}${path}`, { ...options, headers });
-  if (!res.ok) throw new Error(`API error ${res.status}`);
-  return res.json();
+  const method = (options.method || 'GET').toUpperCase();
+  const dedupeKey = method === 'GET' ? `${method} ${path}` : null;
+  const isMe = method === 'GET' && path === '/user/me';
+
+  if (isMe && meCache && (Date.now() - meCacheAt) < ME_CACHE_MS) {
+    return meCache;
+  }
+
+  if (dedupeKey && inflightGets.has(dedupeKey)) {
+    return inflightGets.get(dedupeKey);
+  }
+
+  const requestPromise = schedule(() => apiInternal(path, options))
+    .then((data) => {
+      if (isMe) {
+        meCache = data;
+        meCacheAt = Date.now();
+      }
+      return data;
+    })
+    .catch((err) => {
+      if (isMe && meCache) return meCache;
+      throw err;
+    });
+  if (dedupeKey) {
+    inflightGets.set(dedupeKey, requestPromise);
+    requestPromise.finally(() => inflightGets.delete(dedupeKey));
+  }
+
+  return requestPromise;
 }
 
 // Formatting utilities (moved from main file)

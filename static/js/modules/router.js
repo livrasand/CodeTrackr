@@ -37,7 +37,7 @@ export function showLanding() {
 
 export function showDashboard() {
   // Hide landing sections
-  ['hero', 'stats', 'leaderboard', 'features', 'build', 'plugins', 'pricing', 'about', 'footer', 'nav', 'public-profile'].forEach(id => {
+  ['hero', 'stats', 'leaderboard', 'features', 'why', 'build', 'plugins', 'pricing', 'about', 'footer', 'nav', 'public-profile'].forEach(id => {
     const el = document.getElementById(id);
     if (el) el.classList.add('hidden');
   });
@@ -46,7 +46,7 @@ export function showDashboard() {
 }
 
 export function hideAllViews() {
-  ['hero', 'stats', 'leaderboard', 'features', 'build', 'plugins', 'pricing', 'about', 'footer', 'nav', 'dashboard', 'public-profile'].forEach(id => {
+  ['hero', 'stats', 'leaderboard', 'features', 'why', 'build', 'plugins', 'pricing', 'about', 'footer', 'nav', 'dashboard', 'public-profile'].forEach(id => {
     const el = document.getElementById(id);
     if (el) el.classList.add('hidden');
   });

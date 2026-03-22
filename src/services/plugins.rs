@@ -244,7 +244,10 @@ pub async fn get_dashboard_manifests(
     .bind(user.id)
     .fetch_all(&state.db.pool)
     .await
-    .unwrap_or_default()
+    .map_err(|e| {
+        tracing::error!("Error fetching dashboard panels for user {}: {}", user.id, e);
+        (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": "Failed to load dashboard panels"})))
+    })?
     .into_iter()
     .map(|p| serde_json::json!({
         "panel": p.name,

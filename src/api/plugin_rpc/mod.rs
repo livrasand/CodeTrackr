@@ -28,8 +28,8 @@ pub async fn execute_lifecycle_hooks(
         .unwrap_or(3);
 
     // Obtener todos los plugins instalados por el usuario que tienen script
-    let plugins: Vec<(String, String)> = match sqlx::query_as::<_, (String, String)>(
-        r#"SELECT p.name, p.script
+    let plugins: Vec<(String, String, uuid::Uuid)> = match sqlx::query_as::<_, (String, String, uuid::Uuid)>(
+        r#"SELECT p.name, p.script, p.id
            FROM plugin_store p
            JOIN installed_plugins i ON p.id = i.plugin_id
            WHERE i.user_id = $1 AND p.is_banned = false AND p.is_published = true AND p.script IS NOT NULL"#,
@@ -49,7 +49,7 @@ pub async fn execute_lifecycle_hooks(
     let _ = tokio::time::timeout(
         std::time::Duration::from_secs(30), // 30s timeout total
         stream::iter(plugins)
-            .map(|(plugin_name, script)| {
+            .map(|(plugin_name, script, plugin_id)| {
                 let event_data = event_data.clone();
                 let state = state.clone();
                 let user_id = *user_id;
@@ -64,6 +64,7 @@ pub async fn execute_lifecycle_hooks(
                             &user_id.to_string(),
                             &serde_json::to_string(&event_data).unwrap_or_else(|_| "{}".to_string()),
                             state,
+                            plugin_id,
                         );
                     }).await;
                 }
@@ -88,6 +89,7 @@ pub async fn execute_lifecycle_hooks(
 ///   }
 /// };
 /// ```
+#[allow(dead_code)]
 pub async fn rpc_call(
     AuthenticatedUser(user): AuthenticatedUser,
     State(state): State<AppState>,
@@ -105,10 +107,13 @@ pub async fn rpc_call(
 
     // 1. Cargar el script del plugin desde la DB — debe estar instalado por este usuario
     #[derive(sqlx::FromRow)]
-    struct PluginRow { script: Option<String> }
+    struct PluginRow { 
+        script: Option<String>,
+        id: uuid::Uuid,
+    }
 
     let row = sqlx::query_as::<_, PluginRow>(
-        r#"SELECT p.script
+        r#"SELECT p.script, p.id
            FROM plugin_store p
            JOIN installed_plugins i ON p.id = i.plugin_id
            WHERE p.name = $1 AND i.user_id = $2 AND p.is_banned = false AND p.is_published = true"#,
@@ -123,38 +128,43 @@ pub async fn rpc_call(
     let script = row.script.ok_or_else(|| {
         (StatusCode::BAD_REQUEST, Json(json!({"error": "Plugin has no script"})))
     })?;
+    
+    let plugin_id = row.id;
 
     let req_body = body.map(|b| b.0).unwrap_or(Value::Null);
     let req_json = serde_json::to_string(&req_body).unwrap_or_else(|_| "null".to_string());
 
+    // 2. Ejecutar en sandbox QuickJS con timeout de 15s
     let user_id_str = user.id.to_string();
     let db_pool = state.db.pool.clone();
     let redis_pool = state.redis.clone();
     let plugin_name_log = plugin_name.clone();
-    let handler_name_log = handler_name.clone();
-
-    // 2. Ejecutar en sandbox QuickJS con timeout de 15s
+    let handler_safe_log = handler_safe.clone();
     let result = tokio::time::timeout(
         std::time::Duration::from_secs(15),
         tokio::task::spawn_blocking(move || {
-            run_rpc_in_quickjs(&script, &handler_safe, &plugin_name, &user_id_str, &req_json, db_pool, redis_pool)
+            run_rpc_in_quickjs(&script, &handler_safe, &plugin_name, &user_id_str, &req_json, db_pool, redis_pool, plugin_id)
         }),
     ).await;
 
     match result {
-        Ok(Ok(Ok(value))) => Ok(Json(value)),
-        Ok(Ok(Err(err_msg))) => {
-            tracing::warn!("[plugin rpc] handler failed — plugin={plugin_name_log} handler={handler_name_log} detail={err_msg}");
+        Ok(Ok(plugin_result)) => {
+            match plugin_result {
+                Ok(value) => Ok(Json(value)),
+                Err(err_msg) => {
+                    tracing::warn!("[plugin rpc] handler failed — plugin={} handler={} detail={}", plugin_name_log, handler_safe_log, err_msg);
+                    Err((
+                        StatusCode::INTERNAL_SERVER_ERROR,
+                        Json(json!({"error": "Plugin handler failed", "detail": err_msg})),
+                    ))
+                }
+            }
+        },
+        Ok(Err(join_err)) => {
+            tracing::warn!("[plugin rpc] task join error — plugin={} handler={} detail={}", plugin_name_log, handler_safe_log, join_err);
             Err((
                 StatusCode::INTERNAL_SERVER_ERROR,
-                Json(json!({"error": "Plugin handler failed", "detail": err_msg})),
-            ))
-        }
-        Ok(Err(e)) => {
-            tracing::warn!("[plugin rpc] sandbox thread error — plugin={plugin_name_log} handler={handler_name_log} err={e}");
-            Err((
-                StatusCode::INTERNAL_SERVER_ERROR,
-                Json(json!({"error": format!("Sandbox thread error: {e}")})),
+                Json(json!({"error": "Plugin task failed", "detail": join_err.to_string()})),
             ))
         }
         Err(_) => Err((

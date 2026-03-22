@@ -253,6 +253,15 @@
     <div class="container docs-layout">
         <aside class="docs-sidebar">
             <div class="sidebar-group">
+                <h3>Features</h3>
+                <div class="sidebar-list">
+                    <a href="#overview" class="sidebar-link">Overview</a>
+                    <a href="#authentication" class="sidebar-link">Authentication</a>
+                    <a href="#realtime" class="sidebar-link">Real-time Updates</a>
+                    <a href="#rate-limiting" class="sidebar-link">Rate Limiting</a>
+                </div>
+            </div>
+            <div class="sidebar-group">
                 <h3>Plugins</h3>
                 <div class="sidebar-list">
                     <a href="#plugin-editor" class="sidebar-link">Plugin Editor</a>
@@ -321,7 +330,144 @@
 
         <main class="docs-content">
             <h1>Documentation</h1>
-            <p>Minimal tracking infrastructure for developers. Direct integration without complex OAuth required.</p>
+            <p>Minimal tracking infrastructure for developers. Free forever, privacy-first, and self-hostable. Track your coding time with real-time dashboards, global leaderboards, and an extensive plugin system.</p>
+
+            <!-- ══════════════════════════════════════════════════════════ -->
+            <!-- OVERVIEW                                                  -->
+            <!-- ══════════════════════════════════════════════════════════ -->
+
+            <section id="overview">
+                <h2>Overview</h2>
+                <p>CodeTrackr is a <strong>free forever</strong> coding time tracker built with Rust. It provides WakaTime-compatible API endpoints, real-time dashboards via WebSocket, global leaderboards, and a powerful plugin system for extensibility.</p>
+                
+                <h3>Key Features</h3>
+                <ul>
+                    <li><strong>Free Forever:</strong> No paywalls for core features</li>
+                    <li><strong>API Compatible:</strong> Works with existing WakaTime extensions</li>
+                    <li><strong>Real-time Dashboard:</strong> Live stats via WebSocket</li>
+                    <li><strong>Global Leaderboards:</strong> Compete with developers worldwide</li>
+                    <li><strong>Plugin System:</strong> Browser widgets and server-side lifecycle hooks</li>
+                    <li><strong>Theme Store:</strong> Community CSS themes with live customization</li>
+                    <li><strong>Self-hostable:</strong> Your data, your server, your rules</li>
+                    <li><strong>Privacy First:</strong> Anonymous accounts available, no tracking</li>
+                </ul>
+
+                <h3>Technology Stack</h3>
+                <ul>
+                    <li><strong>Backend:</strong> Rust with Axum framework</li>
+                    <li><strong>Database:</strong> PostgreSQL with SQLx</li>
+                    <li><strong>Cache:</strong> Redis for real-time data</li>
+                    <li><strong>Frontend:</strong> Vanilla JavaScript with CSS custom properties</li>
+                    <li><strong>Auth:</strong> OAuth (GitHub/GitLab) + Anonymous accounts</li>
+                    <li><strong>Plugins:</strong> QuickJS sandbox for server-side execution</li>
+                </ul>
+            </section>
+
+            <!-- ══════════════════════════════════════════════════════════ -->
+            <!-- AUTHENTICATION                                             -->
+            <!-- ══════════════════════════════════════════════════════════ -->
+
+            <section id="authentication">
+                <h2>Authentication</h2>
+                <p>CodeTrackr supports multiple authentication methods:</p>
+                
+                <h3>OAuth Providers</h3>
+                <ul>
+                    <li><strong>GitHub:</strong> Full OAuth integration with profile sync</li>
+                    <li><strong>GitLab:</strong> OAuth support for GitLab users</li>
+                </ul>
+
+                <h3>Anonymous Accounts</h3>
+                <p>Create anonymous accounts without any OAuth provider:</p>
+                <pre><code class="language-bash"># Create anonymous account
+curl -X POST https://codetrackr.leapcell.app/auth/anonymous/create \
+  -H "Content-Type: application/json" \
+  -d '{}'
+
+# Response: { "account_number": "A123456", "token": "jwt_token" }
+
+# Login with account number
+curl -X POST https://codetrackr.leapcell.app/auth/anonymous/login \
+  -H "Content-Type: application/json" \
+  -d '{ "account_number": "A123456" }'</code></pre>
+
+                <h3>API Keys</h3>
+                <p>Generate API keys for programmatic access:</p>
+                <pre><code class="language-bash"># List API keys
+curl -X GET https://codetrackr.leapcell.app/api/v1/keys \
+  -H "Authorization: Bearer YOUR_TOKEN"
+
+# Create new API key
+curl -X POST https://codetrackr.leapcell.app/api/v1/keys \
+  -H "Authorization: Bearer YOUR_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{ "name": "My IDE Extension" }'</code></pre>
+            </section>
+
+            <!-- ══════════════════════════════════════════════════════════ -->
+            <!-- REAL-TIME UPDATES                                          -->
+            <!-- ══════════════════════════════════════════════════════════ -->
+
+            <section id="realtime">
+                <h2>Real-time Updates</h2>
+                <p>CodeTrackr provides real-time dashboard updates via WebSocket:</p>
+                
+                <h3>WebSocket Connection</h3>
+                <pre><code class="language-javascript">// Get a single-use WebSocket ticket
+const response = await fetch('/api/v1/ws-ticket', {
+  method: 'POST',
+  headers: { 'Authorization': 'Bearer ' + token }
+});
+const { ticket } = await response.json();
+
+// Connect with the ticket (expires in 30s)
+const ws = new WebSocket(`wss://codetrackr.leapcell.app/ws?ticket=${ticket}`);
+
+ws.onmessage = (event) => {
+  const data = JSON.parse(event.data);
+  console.log('Real-time update:', data);
+  // Update dashboard stats live
+};</code></pre>
+
+                <h3>Real-time Events</h3>
+                <ul>
+                    <li><strong>New Heartbeat:</strong> Updates coding time instantly</li>
+                    <li><strong>Stats Changes:</strong> Refreshes dashboard statistics</li>
+                    <li><strong>Leaderboard Updates:</strong> Live position changes</li>
+                    <li><strong>Plugin Events:</strong> Real-time plugin data updates</li>
+                </ul>
+            </section>
+
+            <!-- ══════════════════════════════════════════════════════════ -->
+            <!-- RATE LIMITING                                              -->
+            <!-- ══════════════════════════════════════════════════════════ -->
+
+            <section id="rate-limiting">
+                <h2>Rate Limiting</h2>
+                <p>CodeTrackr implements intelligent rate limiting with real IP detection:</p>
+                
+                <h3>IP Detection Priority</h3>
+                <ol>
+                    <li>Cloudflare Connecting IP header</li>
+                    <li>True Client IP header</li>
+                    <li>X-Forwarded-For (first IP)</li>
+                    <li>X-Real-IP header</li>
+                    <li>X-Client-IP header</li>
+                    <li>Connection IP (fallback)</li>
+                </ol>
+
+                <h3>Rate Limits</h3>
+                <div class="table-wrapper">
+                    <table>
+                        <thead><tr><th>Endpoint Type</th><th>Limit</th><th>Burst</th></tr></thead>
+                        <tbody>
+                            <tr><td class="td-main">General API</td><td>200 req/s</td><td>50 burst</td></tr>
+                            <tr><td class="td-main">Authentication</td><td>100 req/s</td><td>20 burst</td></tr>
+                            <tr><td class="td-main">Webhooks</td><td>10 req/s</td><td>5 burst</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+            </section>
 
             <!-- ══════════════════════════════════════════════════════════ -->
             <!-- PLUGIN EDITOR                                             -->
@@ -2611,33 +2757,33 @@ button.onclick = async () => {
             const grid = document.getElementById('ide-grid');
             if (!grid) return;
 
-            // Limpiar contenido actual
-            grid.innerHTML = '<div style="text-align:center; padding:20px; color:var(--text-muted);">Cargando...</div>';
+            // Clear current content
+            grid.innerHTML = '<div style="text-align:center; padding:20px; color:var(--text-muted);">Loading...</div>';
 
             try {
-                // Obtener repositorios de GitHub
+                // Get repositories from GitHub
                 const githubResponse = await fetch('https://api.github.com/users/livrasand/repos?per_page=100');
                 const githubRepos = await githubResponse.json();
                 const githubRepoNames = githubRepos.map(repo => repo.name.toLowerCase());
 
-                // Obtener repositorios de GitLab (si existe cuenta)
+                // Get repositories from GitLab (if account exists)
                 let gitlabRepoNames = [];
                 try {
                     const gitlabResponse = await fetch('https://gitlab.com/api/v4/users/livrasand/projects?per_page=100');
                     const gitlabRepos = await gitlabResponse.json();
                     gitlabRepoNames = gitlabRepos.map(repo => repo.name.toLowerCase());
                 } catch (e) {
-                    // GitLab puede no tener cuenta o fallar
-                    console.log('No se pudo acceder a repositorios de GitLab:', e);
+                    // GitLab might not have account or might fail
+                    console.log('Could not access GitLab repositories:', e);
                 }
 
                 const allRepoNames = [...githubRepoNames, ...gitlabRepoNames];
 
-                // Generar contenido dinámico
+                // Generate dynamic content
                 let html = '';
                 for (const [ide, repos] of Object.entries(ideRepoMap)) {
                     const hasExtension = repos.some(repo => allRepoNames.includes(repo.toLowerCase()));
-                    const status = hasExtension ? 'Disponible' : 'Próximamente';
+                    const status = hasExtension ? 'Available' : 'Coming Soon';
                     const statusClass = hasExtension ? 'available' : 'coming-soon';
                     html += `
                         <div class="ide-card">
@@ -2649,7 +2795,7 @@ button.onclick = async () => {
 
                 grid.innerHTML = html;
 
-                // Agregar estilos para los estados
+                // Add styles for statuses
                 if (!document.getElementById('extension-styles')) {
                     const style = document.createElement('style');
                     style.id = 'extension-styles';
@@ -2675,7 +2821,7 @@ button.onclick = async () => {
                 }
 
             } catch (error) {
-                console.error('Error al verificar extensiones:', error);
+                console.error('Error checking extensions:', error);
                 grid.innerHTML = `
                     <div class="ide-card">VS Code</div>
                     <div class="ide-card">IntelliJ IDEA</div>
@@ -2693,7 +2839,7 @@ button.onclick = async () => {
             }
         }
 
-        // Ejecutar al cargar la página
+        // Run on page load
         document.addEventListener('DOMContentLoaded', checkExtensions);
     </script>
 

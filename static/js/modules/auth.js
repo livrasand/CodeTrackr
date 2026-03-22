@@ -19,7 +19,14 @@ export function handleOAuthCallback() {
     }).then(async res => {
       if (res.ok) {
         const data = await res.json();
-        if (data.token) localStorage.setItem('ct_token', data.token);
+        const accessToken = data.access_token || data.token;
+        if (accessToken) {
+          localStorage.setItem('ct_token', accessToken);
+          currentToken = accessToken;
+        }
+        if (data.refresh_token) {
+          localStorage.setItem('ct_refresh_token', data.refresh_token);
+        }
         window.location.href = '/';
       } else {
         window.location.href = '/?error=auth_failed';
@@ -65,12 +72,16 @@ export function isLoggedIn() {
 
 export function logout() {
   localStorage.removeItem('ct_token');
+  localStorage.removeItem('ct_refresh_token');
   currentToken = null;
   currentUser = null;
   window.location.reload();
 }
 
 export function getCurrentToken() {
+  if (!currentToken) {
+    currentToken = localStorage.getItem('ct_token');
+  }
   return currentToken;
 }
 
@@ -82,6 +93,48 @@ export function setCurrentUser(user) {
   currentUser = user;
 }
 
+// Refresh token management
+export function getRefreshToken() {
+  return localStorage.getItem('ct_refresh_token');
+}
+
+export async function refreshAccessToken() {
+  const refreshToken = getRefreshToken();
+  if (!refreshToken) {
+    throw new Error('No refresh token available');
+  }
+  
+  try {
+    const response = await fetch('/auth/refresh', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ refresh_token: refreshToken }),
+    });
+    
+    if (!response.ok) {
+      throw new Error('Token refresh failed');
+    }
+    
+    const data = await response.json();
+    if (data.access_token) {
+      localStorage.setItem('ct_token', data.access_token);
+      currentToken = data.access_token;
+      
+      // Update refresh token if provided
+      if (data.refresh_token) {
+        localStorage.setItem('ct_refresh_token', data.refresh_token);
+      }
+    }
+    
+    return data;
+  } catch (error) {
+    console.error('Token refresh failed:', error);
+    // Clear tokens on refresh failure
+    logout();
+    throw error;
+  }
+}
+
 // Anonymous authentication (Mullvad-style)
 export async function createAnonymousAccount() {
   try {
@@ -91,14 +144,20 @@ export async function createAnonymousAccount() {
     });
     
     if (!response.ok) {
-      throw new Error('Failed to create anonymous account');
+      const error = await response.json();
+      throw new Error(error.error || 'Failed to create anonymous account');
     }
     
     const data = await response.json();
-    if (data.token) {
-      localStorage.setItem('ct_token', data.token);
-      currentToken = data.token;
+    if (data.access_token) {
+      localStorage.setItem('ct_token', data.access_token);
+      currentToken = data.access_token;
       currentUser = data.user;
+      
+      // Store refresh token if available
+      if (data.refresh_token) {
+        localStorage.setItem('ct_refresh_token', data.refresh_token);
+      }
     }
     return data;
   } catch (error) {
@@ -121,10 +180,15 @@ export async function loginWithAccountNumber(accountNumber) {
     }
     
     const data = await response.json();
-    if (data.token) {
-      localStorage.setItem('ct_token', data.token);
-      currentToken = data.token;
+    if (data.access_token) {
+      localStorage.setItem('ct_token', data.access_token);
+      currentToken = data.access_token;
       currentUser = data.user;
+      
+      // Store refresh token if available
+      if (data.refresh_token) {
+        localStorage.setItem('ct_refresh_token', data.refresh_token);
+      }
     }
     return data;
   } catch (error) {

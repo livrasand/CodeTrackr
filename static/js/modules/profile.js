@@ -6,13 +6,19 @@
 import { $, showToast } from './ui.js';
 import { api, fmt } from './api.js';
 import { isLoggedIn, getCurrentUser } from './auth.js';
-import { hideAllViews } from './router.js';
+import { hideAllViews, showLanding } from './router.js';
+import { avatarUrlForUser } from './avatar.js';
 
 let _ppPrevSection = null;
+let _currentProfileUsername = null;
+let _currentProfileAvailableForHire = false;
 
 export async function openPublicProfile(username) {
   const ppSection = $('public-profile');
   if (!ppSection) return;
+
+  _currentProfileUsername = username;
+  _currentProfileAvailableForHire = false;
 
   // Remember which section was visible to restore on back
   const dash = $('dashboard');
@@ -42,12 +48,13 @@ export async function openPublicProfile(username) {
   $('pp-weekly') && ($('pp-weekly').textContent = '—');
   $('pp-streak') && ($('pp-streak').textContent = '—');
   $('pp-actions') && ($('pp-actions').innerHTML = '');
+  $('pp-contact-btn') && ($('pp-contact-btn').style.display = 'none');
 
   try {
     const p = await api(`/user/profile/${username}`);
 
     const avatarEl = $('pp-avatar');
-    if (avatarEl) avatarEl.src = p.avatar_url || '';
+    if (avatarEl) avatarEl.src = avatarUrlForUser(p);
 
     const nameEl = $('pp-display-name');
     if (nameEl) nameEl.textContent = p.display_name || p.username;
@@ -179,6 +186,13 @@ export async function openPublicProfile(username) {
     const hireSection = $('pp-hire-section');
     if (hireSection) hireSection.style.display = p.available_for_hire ? '' : 'none';
 
+    _currentProfileAvailableForHire = !!p.available_for_hire;
+    const contactBtn = $('pp-contact-btn');
+    if (contactBtn) {
+      const isSelf = getCurrentUser()?.username === username;
+      contactBtn.style.display = _currentProfileAvailableForHire && !isSelf ? '' : 'none';
+    }
+
   } catch (e) {
     console.warn('Public profile error:', e);
     const ppSection2 = $('public-profile');
@@ -189,6 +203,8 @@ export async function openPublicProfile(username) {
 export function closePublicProfile() {
   const ppSection = $('public-profile');
   if (ppSection) ppSection.classList.add('hidden');
+  _currentProfileUsername = null;
+  _currentProfileAvailableForHire = false;
 
   if (_ppPrevSection === 'dashboard') {
     window.history.pushState({}, '', '/');
@@ -196,7 +212,6 @@ export function closePublicProfile() {
     if (dash) dash.classList.remove('hidden');
   } else {
     window.history.pushState({}, '', '/');
-    const { showLanding } = require('./router.js');
     showLanding();
   }
 }
@@ -222,3 +237,102 @@ export async function toggleFollow(username, doFollow, btn) {
     showToast('Action failed: ' + e.message, [], 3000);
   }
 }
+
+function setContactStatus(message, type = '') {
+  const statusEl = $('hire-contact-status');
+  if (!statusEl) return;
+  statusEl.textContent = message || '';
+  statusEl.style.display = message ? 'block' : 'none';
+  statusEl.style.color = type === 'success' ? '#4ade80'
+    : type === 'error' ? '#f87171'
+      : 'var(--text-muted)';
+}
+
+export function openContactModal() {
+  if (!_currentProfileUsername) {
+    showToast('Open a public profile to contact a developer.', [], 3000, 'warning');
+    return;
+  }
+  if (!_currentProfileAvailableForHire) {
+    showToast('This developer is not available for hire.', [], 3000, 'info');
+    return;
+  }
+  if (!isLoggedIn()) {
+    showToast('Please log in to contact this developer.', [], 4000, 'warning');
+    return;
+  }
+
+  const modal = $('hire-contact-modal');
+  if (!modal) return;
+
+  const me = getCurrentUser();
+  const nameEl = $('hire-contact-name');
+  const emailEl = $('hire-contact-email');
+  const msgEl = $('hire-contact-message');
+  if (nameEl && !nameEl.value) nameEl.value = me?.display_name || me?.username || '';
+  if (emailEl && !emailEl.value) emailEl.value = me?.email || '';
+  if (msgEl) msgEl.value = '';
+
+  setContactStatus('');
+  modal.style.display = 'flex';
+  if (msgEl) msgEl.focus();
+}
+
+export function closeContactModal() {
+  const modal = $('hire-contact-modal');
+  if (modal) modal.style.display = 'none';
+  setContactStatus('');
+}
+
+export async function submitContactDev() {
+  if (!_currentProfileUsername) {
+    showToast('No profile selected.', [], 3000, 'warning');
+    return;
+  }
+  if (!isLoggedIn()) {
+    showToast('Please log in to contact this developer.', [], 4000, 'warning');
+    return;
+  }
+
+  const msgEl = $('hire-contact-message');
+  const message = msgEl?.value?.trim() || '';
+  if (!message) {
+    setContactStatus('Please write a short message.', 'error');
+    return;
+  }
+  if (message.length > 2000) {
+    setContactStatus('Message too long (max 2000 characters).', 'error');
+    return;
+  }
+
+  const submitBtn = $('hire-contact-submit');
+  if (submitBtn) {
+    submitBtn.disabled = true;
+    submitBtn.textContent = 'Sending...';
+  }
+
+  try {
+    await api(`/user/contact/${_currentProfileUsername}`, {
+      method: 'POST',
+      body: JSON.stringify({ message }),
+    });
+    setContactStatus('Message sent!', 'success');
+    showToast('Contact request sent.', [], 3000, 'success');
+    if (msgEl) msgEl.value = '';
+    setTimeout(() => closeContactModal(), 600);
+  } catch (e) {
+    console.warn('Contact dev failed:', e);
+    setContactStatus('Failed to send message. Please try again.', 'error');
+  } finally {
+    if (submitBtn) {
+      submitBtn.disabled = false;
+      submitBtn.textContent = 'Send';
+    }
+  }
+}
+
+window.closePublicProfile = closePublicProfile;
+window.toggleFollow = toggleFollow;
+window.openContactModal = openContactModal;
+window.closeContactModal = closeContactModal;
+window.submitContactDev = submitContactDev;

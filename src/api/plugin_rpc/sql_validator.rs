@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 //! SQL validation layer for the plugin sandbox.
 //!
 //! Plugins can execute SQL against the database, but every query must pass through
@@ -367,8 +368,7 @@ pub fn validate_plugin_sql(sql: &str) -> Result<(), String> {
                 // Buscar '=' seguido de Param en los próximos 2 tokens
                 let next: Vec<_> = tokens.get(idx+1..=(idx+2).min(n-1)).unwrap_or(&[]).iter().collect();
                 let eq_then_param = matches!(next.as_slice(),
-                    [SqlToken::Punct('='), SqlToken::Param] |
-                    [SqlToken::Punct('='), SqlToken::Literal] // también aceptar literales por si el ctx.user_id se pasa como string
+                    [SqlToken::Punct('='), SqlToken::Param]
                 );
                 if eq_then_param {
                     found = true;

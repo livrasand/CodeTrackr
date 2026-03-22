@@ -1,27 +1,28 @@
 use futures::StreamExt;
 use anyhow::Result;
 
+use redis::aio::ConnectionManager;
+
 #[derive(Clone)]
 pub struct RedisPool {
-    pub client: redis::Client,
+    pub manager: ConnectionManager,
     pub url: String,
 }
 
 impl RedisPool {
     pub async fn new(url: &str) -> Result<Self> {
         let client = redis::Client::open(url)?;
+        let manager = ConnectionManager::new(client).await?;
         Ok(Self {
-            client,
+            manager,
             url: url.to_string(),
         })
     }
 
-    /// Creates a fresh multiplexed connection on each call.
-    pub async fn get_conn(&self) -> Result<redis::aio::MultiplexedConnection> {
-        self.client
-            .get_multiplexed_async_connection()
-            .await
-            .map_err(|e| anyhow::anyhow!("Redis connection failed: {e}"))
+    /// Returns a clone of the ConnectionManager.
+    /// ConnectionManager handles reconnection automatically.
+    pub async fn get_conn(&self) -> Result<ConnectionManager> {
+        Ok(self.manager.clone())
     }
 }
 
@@ -38,6 +39,32 @@ pub mod ws_handler {
     // In-process broadcast channel for real-time updates
     use std::sync::OnceLock;
     use tokio::sync::broadcast;
+
+    // In-process ticket store as fallback when Redis is unavailable
+    use std::sync::Arc;
+    use tokio::sync::RwLock;
+    use std::collections::HashMap;
+    use std::time::{SystemTime, UNIX_EPOCH};
+
+    pub static TICKET_STORE: OnceLock<Arc<RwLock<HashMap<String, (u64, u64)>>>> = OnceLock::new();
+
+    fn get_ticket_store() -> Arc<RwLock<HashMap<String, (u64, u64)>>> {
+        TICKET_STORE.get_or_init(|| {
+            Arc::new(RwLock::new(HashMap::new()))
+        }).clone()
+    }
+
+    // Clean expired tickets from memory store
+    async fn clean_expired_tickets() {
+        let store = get_ticket_store();
+        let mut tickets = store.write().await;
+        let now = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_secs();
+        
+        tickets.retain(|_, (_, expires)| *expires > now);
+    }
 
     pub static BROADCAST: OnceLock<broadcast::Sender<String>> = OnceLock::new();
 
@@ -68,6 +95,9 @@ pub mod ws_handler {
             .collect();
 
         let key = format!("ws_ticket:{}", ticket);
+        let mut stored_in_memory = false;
+        
+        // Try Redis first
         match state.redis.get_conn().await {
             Ok(mut conn) => {
                 let result: Result<(), _> = redis::cmd("SETEX")
@@ -78,10 +108,32 @@ pub mod ws_handler {
                     .await;
                 if let Err(e) = result {
                     tracing::warn!("[ws] Failed to store ticket in Redis: {e}");
+                    // Fallback to memory store
+                    stored_in_memory = true;
                 }
             }
             Err(e) => {
                 tracing::warn!("[ws] Redis unavailable when creating ticket: {e}");
+                stored_in_memory = true;
+            }
+        }
+
+        // Fallback to memory store if Redis failed
+        if stored_in_memory {
+            let store = get_ticket_store();
+            let now = SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .unwrap()
+                .as_secs();
+            let expires = now + TICKET_TTL_SECS;
+            
+            let mut tickets = store.write().await;
+            tickets.insert(ticket.clone(), (user.id.as_u128() as u64, expires));
+            
+            // Clean expired tickets periodically
+            if tickets.len() % 10 == 0 {
+                drop(tickets);
+                clean_expired_tickets().await;
             }
         }
 
@@ -104,8 +156,10 @@ pub mod ws_handler {
         };
 
         let key = format!("ws_ticket:{}", ticket);
-        // GET + DEL secuencial para compatibilidad con Redis < 6.2 (GETDEL requiere 6.2+)
-        let valid = match state.redis.get_conn().await {
+        let mut valid = false;
+        
+        // Try Redis first
+        match state.redis.get_conn().await {
             Ok(mut conn) => {
                 let val: Option<String> = redis::cmd("GET")
                     .arg(&key)
@@ -118,14 +172,33 @@ pub mod ws_handler {
                         .query_async(&mut conn)
                         .await
                         .unwrap_or(());
+                    valid = true;
                 } else {
-                    tracing::warn!("[ws] ticket not found or expired: {}", &ticket[..8]);
+                    tracing::warn!("[ws] ticket not found or expired in Redis: {}", &ticket[..8]);
                 }
-                val.is_some()
             },
             Err(e) => {
                 tracing::warn!("[ws] Redis connection failed for ticket validation: {e}");
-                false
+                // Try memory store as fallback
+                let store = get_ticket_store();
+                let now = SystemTime::now()
+                    .duration_since(UNIX_EPOCH)
+                    .unwrap()
+                    .as_secs();
+                
+                let mut tickets = store.write().await;
+                if let Some((_user_id, expires)) = tickets.remove(&ticket) {
+                    if expires > now {
+                        valid = true;
+                    } else {
+                        tracing::warn!("[ws] ticket expired in memory store: {}", &ticket[..8]);
+                    }
+                } else {
+                    tracing::warn!("[ws] ticket not found in memory store: {}", &ticket[..8]);
+                }
+                
+                // Clean expired tickets
+                tickets.retain(|_, (_, expires)| *expires > now);
             },
         };
 

@@ -320,12 +320,11 @@ pub async fn get_badge(
 
 #[derive(Deserialize)]
 pub struct ContactDevRequest {
-    pub name: String,
-    pub email: String,
     pub message: String,
 }
 
 pub async fn contact_dev(
+    AuthenticatedUser(sender): AuthenticatedUser,
     State(state): State<AppState>,
     Path(username): Path<String>,
     axum::Json(body): axum::Json<ContactDevRequest>,
@@ -340,22 +339,27 @@ pub async fn contact_dev(
     .map_err(|e| error_handling::handle_database_error(e))?
     .ok_or_else(|| (StatusCode::NOT_FOUND, Json(json!({"error": "User not found or not available for hire"}))))?;
 
-    if body.name.trim().is_empty() || body.email.trim().is_empty() || body.message.trim().is_empty() {
-        return Err((StatusCode::BAD_REQUEST, Json(json!({"error": "name, email and message are required"}))));
+    if body.message.trim().is_empty() {
+        return Err((StatusCode::BAD_REQUEST, Json(json!({"error": "message is required"}))));
     }
 
     if body.message.len() > 2000 {
         return Err((StatusCode::BAD_REQUEST, Json(json!({"error": "message too long (max 2000 chars)"}))));
     }
 
-    // Store the contact request in the database
+    // Prevent self-contact
+    if user.id == sender.id {
+        return Err((StatusCode::BAD_REQUEST, Json(json!({"error": "Cannot contact yourself"}))));
+    }
+
+    // Store the contact request in the database using authenticated user's data
     sqlx::query(
         r#"INSERT INTO hire_contacts (target_user_id, sender_name, sender_email, message)
            VALUES ($1, $2, $3, $4)"#
     )
     .bind(user.id)
-    .bind(body.name.trim())
-    .bind(body.email.trim())
+    .bind(&sender.display_name)
+    .bind(&sender.email)
     .bind(body.message.trim())
     .execute(&state.db.pool)
     .await

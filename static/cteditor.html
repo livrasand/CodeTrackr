@@ -615,14 +615,70 @@ function runWidgetScript(code) {
   const token = localStorage.getItem('ct_token') || '';
 
   try {
-    const fn = new Function('container', 'token', code);
-    fn(container, token);
-    const elapsed = ((performance.now() - t0) / 1000).toFixed(2);
-    const meta = document.createElement('div');
-    meta.style.cssText = 'font-size:10px;color:var(--text-dark);font-family:var(--font-mono);margin-top:12px;padding-top:8px;border-top:1px solid var(--border);';
-    meta.textContent = `exit 0 · ${elapsed}s`;
-    widgetOut.appendChild(meta);
-    setStatus('ok', '✓ ok');
+    // Crear sandbox iframe para aislar el código del widget
+    const iframe = document.createElement('iframe');
+    iframe.style.cssText = 'width:100%; height:400px; border:none; border-radius:4px;';
+    iframe.sandbox = 'allow-scripts';
+    
+    // Crear HTML seguro para el sandbox
+    const sandboxHTML = `
+      <!DOCTYPE html>
+      <html>
+        <head>
+          <meta charset="utf-8">
+          <style>
+            body { margin:0; padding:12px; font-family:system-ui; font-size:14px; }
+            .widget-container { min-height:300px; }
+          </style>
+        </head>
+        <body>
+          <div class="widget-container" id="widget-container"></div>
+          <script>
+            // API segura limitada para el widget
+            const safeAPI = {
+              container: document.getElementById('widget-container'),
+              token: '${token}',
+              fetch: function(url, options) {
+                // Solo permitir fetch al mismo dominio
+                if (url.startsWith('/') || url.includes(window.location.hostname)) {
+                  return fetch(url, options);
+                }
+                throw new Error('External requests not allowed');
+              }
+            };
+            
+            // Ejecutar código con API limitada
+            try {
+              (function() { ${code.replace(/`/g, '\\`').replace(/\$/g, '\\$')} }).call(safeAPI);
+            } catch (e) {
+              safeAPI.container.innerHTML = '<span style="color:red;">⚠ Widget error: ' + e.message + '</span>';
+            }
+          <\/script>
+        </body>
+      </html>
+    `;
+    
+    container.innerHTML = '';
+    container.appendChild(iframe);
+    
+    iframe.onload = () => {
+      try {
+        iframe.contentDocument.body.innerHTML = sandboxHTML;
+        const elapsed = ((performance.now() - t0) / 1000).toFixed(2);
+        const meta = document.createElement('div');
+        meta.style.cssText = 'font-size:10px;color:var(--text-dark);font-family:var(--font-mono);margin-top:12px;padding-top:8px;border-top:1px solid var(--border);';
+        meta.textContent = `exit 0 · ${elapsed}s`;
+        widgetOut.appendChild(meta);
+        setStatus('ok', '✓ ok');
+      } catch (e) {
+        const err = document.createElement('div');
+        err.style.cssText = 'color:#e53;font-family:var(--font-mono);font-size:12px;white-space:pre-wrap;';
+        err.textContent = `✗ Sandbox error: ${e.message}`;
+        widgetOut.appendChild(err);
+        setStatus('err', '✗ error');
+      }
+    };
+    
   } catch (e) {
     const err = document.createElement('div');
     err.style.cssText = 'color:#e53;font-family:var(--font-mono);font-size:12px;white-space:pre-wrap;';

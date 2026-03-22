@@ -17,6 +17,7 @@ export async function connectWebSocket() {
   if (_wsRetryCount >= _wsMaxRetries) return;
   const dash = document.getElementById('dashboard');
   if (!dash || dash.classList.contains('hidden')) return;
+  if (document.hidden) return;
 
   let ticket;
   try {
@@ -74,4 +75,14 @@ export async function connectWebSocket() {
 
 export function getWebSocket() {
   return WS;
+}
+
+export function closeWebSocket() {
+  if (!WS) return;
+  try {
+    if (WS.readyState === WebSocket.OPEN || WS.readyState === WebSocket.CONNECTING) {
+      WS.close(1000, 'client hidden');
+    }
+  } catch (_) {}
+  WS = null;
 }
