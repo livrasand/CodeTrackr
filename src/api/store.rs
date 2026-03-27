@@ -93,7 +93,7 @@ pub async fn list_store_plugins(
         json!({
             "id": r.get::<Uuid, _>("id"),
             "author_id": r.get::<Uuid, _>("author_id"),
-            "author_username": r.get::<String, _>("author_username"),
+            "author_username": r.get::<Option<String>, _>("author_username"),
             "name": r.get::<String, _>("name"),
             "display_name": r.get::<String, _>("display_name"),
             "description": r.get::<Option<String>, _>("description"),
@@ -280,15 +280,16 @@ pub async fn get_installed_plugins(
     State(state): State<AppState>,
 ) -> ApiResult {
     let plugins = sqlx::query_as::<_, StorePlugin>(
-        r#"SELECT p.id, p.author_id, p.name, p.display_name, p.description, p.version,
+        r#"SELECT p.id, p.author_id, u.username as author_username, p.name, p.display_name, p.description, p.version,
                   p.repository, p.icon, p.widget_type, p.api_endpoint, p.script,
                   p.settings_schema, p.is_published, p.is_banned, p.ban_reason,
-                  p.install_count,
+                  p.install_count, p.has_external_access,
                   COALESCE(p.avg_rating, 0.0)::float8 as avg_rating,
                   COALESCE(p.rating_count, 0) as rating_count,
                   p.created_at
            FROM plugin_store p
            JOIN installed_plugins i ON p.id = i.plugin_id
+           LEFT JOIN users u ON u.id = p.author_id
            WHERE i.user_id = $1 AND p.is_banned = false"#
     )
     .bind(user.id)
@@ -443,7 +444,7 @@ pub async fn admin_list_plugins(
     let plugins = sqlx::query_as::<_, StorePlugin>(
         r#"SELECT p.id, p.author_id, u.username as author_username, p.name, p.display_name, p.description, p.version, p.repository, p.icon,
                   p.widget_type, p.api_endpoint, p.script, p.settings_schema, p.is_published, p.is_banned,
-                  p.ban_reason, p.install_count,
+                  p.ban_reason, p.install_count, p.has_external_access,
                   COALESCE(p.avg_rating, 0.0)::float8 as avg_rating,
                   COALESCE(p.rating_count, 0) as rating_count,
                   p.created_at
@@ -506,13 +507,16 @@ pub async fn get_plugin_script(
     Path(plugin_id): Path<Uuid>,
 ) -> ApiResult {
     let row = sqlx::query_as::<_, StorePlugin>(
-        r#"SELECT id, author_id, name, display_name, description, version, repository, icon,
-                  widget_type, api_endpoint, script, settings_schema, is_published, is_banned,
-                  ban_reason, install_count,
-                  COALESCE(avg_rating, 0.0)::float8 as avg_rating,
-                  COALESCE(rating_count, 0) as rating_count,
-                  created_at
-           FROM plugin_store WHERE id = $1 AND is_banned = false AND is_published = true"#
+        r#"SELECT p.id, p.author_id, u.username as author_username, p.name, p.display_name,
+                  p.description, p.version, p.repository, p.icon,
+                  p.widget_type, p.api_endpoint, p.script, p.settings_schema, p.is_published,
+                  p.is_banned, p.ban_reason, p.install_count, p.has_external_access,
+                  COALESCE(p.avg_rating, 0.0)::float8 as avg_rating,
+                  COALESCE(p.rating_count, 0) as rating_count,
+                  p.created_at
+           FROM plugin_store p
+           LEFT JOIN users u ON u.id = p.author_id
+           WHERE p.id = $1 AND p.is_banned = false AND p.is_published = true"#
     )
     .bind(plugin_id)
     .fetch_optional(&state.db.pool)
@@ -552,13 +556,16 @@ pub async fn accept_plugin_version(
 ) -> ApiResult {
     // Fetch current version and script from plugin_store
     let plugin = sqlx::query_as::<_, StorePlugin>(
-        r#"SELECT id, author_id, name, display_name, description, version, repository, icon,
-                  widget_type, api_endpoint, script, settings_schema, is_published, is_banned,
-                  ban_reason, install_count,
-                  COALESCE(avg_rating, 0.0)::float8 as avg_rating,
-                  COALESCE(rating_count, 0) as rating_count,
-                  created_at
-           FROM plugin_store WHERE id = $1 AND is_banned = false AND is_published = true"#
+        r#"SELECT p.id, p.author_id, u.username as author_username, p.name, p.display_name,
+                  p.description, p.version, p.repository, p.icon,
+                  p.widget_type, p.api_endpoint, p.script, p.settings_schema, p.is_published,
+                  p.is_banned, p.ban_reason, p.install_count, p.has_external_access,
+                  COALESCE(p.avg_rating, 0.0)::float8 as avg_rating,
+                  COALESCE(p.rating_count, 0) as rating_count,
+                  p.created_at
+           FROM plugin_store p
+           LEFT JOIN users u ON u.id = p.author_id
+           WHERE p.id = $1 AND p.is_banned = false AND p.is_published = true"#
     )
     .bind(plugin_id)
     .fetch_optional(&state.db.pool)
@@ -643,13 +650,16 @@ pub async fn get_plugin_detail(
     Path(plugin_id): Path<Uuid>,
 ) -> ApiResult {
     let plugin = sqlx::query_as::<_, StorePlugin>(
-        r#"SELECT id, author_id, name, display_name, description, version, repository, icon,
-                  widget_type, api_endpoint, script, settings_schema, is_published, is_banned,
-                  ban_reason, install_count, has_external_access,
-                  COALESCE(avg_rating, 0.0)::float8 as avg_rating,
-                  COALESCE(rating_count, 0) as rating_count,
-                  created_at
-           FROM plugin_store WHERE id = $1 AND is_banned = false"#
+        r#"SELECT p.id, p.author_id, u.username as author_username, p.name, p.display_name,
+                  p.description, p.version, p.repository, p.icon,
+                  p.widget_type, p.api_endpoint, p.script, p.settings_schema, p.is_published,
+                  p.is_banned, p.ban_reason, p.install_count, p.has_external_access,
+                  COALESCE(p.avg_rating, 0.0)::float8 as avg_rating,
+                  COALESCE(p.rating_count, 0) as rating_count,
+                  p.created_at
+           FROM plugin_store p
+           LEFT JOIN users u ON u.id = p.author_id
+           WHERE p.id = $1 AND p.is_banned = false"#
     )
     .bind(plugin_id)
     .fetch_optional(&state.db.pool).await

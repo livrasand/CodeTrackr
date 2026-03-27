@@ -490,6 +490,65 @@ export function importThemeJSON(input) {
   reader.readAsText(file);
 }
 
+export function openPublishThemeModal() {
+  const modal = document.getElementById('modal-publish-theme');
+  if (!modal) return;
+  const vars = _collectEditorVars();
+  const varsEl = document.getElementById('theme-pub-vars');
+  if (varsEl) varsEl.value = JSON.stringify(vars, null, 2);
+  const errEl = document.getElementById('theme-pub-error');
+  if (errEl) errEl.style.display = 'none';
+  modal.style.display = 'flex';
+}
+
+export function closePublishThemeModal() {
+  const modal = document.getElementById('modal-publish-theme');
+  if (modal) modal.style.display = 'none';
+}
+
+export async function submitPublishTheme() {
+  const token = getCurrentToken();
+  if (!token) return;
+
+  const name = document.getElementById('theme-pub-name')?.value.trim();
+  const displayName = document.getElementById('theme-pub-display-name')?.value.trim();
+  const description = document.getElementById('theme-pub-desc')?.value.trim();
+  const version = document.getElementById('theme-pub-version')?.value.trim() || '1.0.0';
+  const icon = document.getElementById('theme-pub-icon')?.value.trim() || '🎨';
+  const varsRaw = document.getElementById('theme-pub-vars')?.value.trim();
+  const errEl = document.getElementById('theme-pub-error');
+
+  if (!name || !displayName) {
+    if (errEl) { errEl.textContent = 'Name and display name are required.'; errEl.style.display = 'block'; }
+    return;
+  }
+
+  let variables = {};
+  try {
+    variables = varsRaw ? JSON.parse(varsRaw) : {};
+  } catch (_) {
+    if (errEl) { errEl.textContent = 'Invalid JSON in CSS Variables field.'; errEl.style.display = 'block'; }
+    return;
+  }
+
+  const btn = document.getElementById('btn-submit-theme');
+  const originalText = btn ? btn.textContent : 'Publish Theme';
+  if (btn) { btn.textContent = 'Publishing...'; btn.disabled = true; }
+
+  try {
+    await api('/themes/publish', {
+      method: 'POST',
+      body: JSON.stringify({ name, display_name: displayName, description, version, icon, variables }),
+    });
+    showToast('Theme published!', [], 3000);
+    closePublishThemeModal();
+    loadThemeStore(true);
+  } catch (e) {
+    if (errEl) { errEl.textContent = e.message || 'Error publishing theme.'; errEl.style.display = 'block'; }
+    if (btn) { btn.textContent = originalText; btn.disabled = false; }
+  }
+}
+
 // Make functions globally available
 window.switchStoreTab = switchStoreTab;
 window.loadThemeStore = loadThemeStore;
@@ -504,3 +563,6 @@ window.saveCustomVars = saveCustomVars;
 window.resetThemeEditor = resetThemeEditor;
 window.exportThemeJSON = exportThemeJSON;
 window.importThemeJSON = importThemeJSON;
+window.openPublishThemeModal = openPublishThemeModal;
+window.closePublishThemeModal = closePublishThemeModal;
+window.submitPublishTheme = submitPublishTheme;

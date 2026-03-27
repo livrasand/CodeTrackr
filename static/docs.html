@@ -266,6 +266,7 @@
                 <div class="sidebar-list">
                     <a href="#plugin-editor" class="sidebar-link">Plugin Editor</a>
                     <a href="#widget-plugins" class="sidebar-link">Widget Plugins</a>
+                    <a href="#widget-plugins" class="sidebar-link" style="padding-left:20px; font-size:11px;">↳ CSS Design Tokens</a>
                     <a href="#lifecycle-plugins" class="sidebar-link">Lifecycle Plugins</a>
                     <a href="#plugin-store" class="sidebar-link">Plugin Store</a>
                     <a href="#submitting-a-package" class="sidebar-link">Publishing</a>
@@ -655,7 +656,42 @@ fetch('/api/v1/stats/summary?range=7d', {
                 <p>All requests require the header <code>Authorization: Bearer &lt;token&gt;</code>, which is provided
                     automatically via the <code>token</code> argument.</p>
 
-                <h3>Step 4 — Handle errors gracefully</h3>
+                <h3>Step 4 — Use CSS design tokens for theme compatibility</h3>
+                <p>Your plugin runs inside a sandboxed <code>iframe</code> that automatically inherits the active theme's
+                    CSS custom properties. Use these variables instead of hard-coded colors so your plugin looks correct
+                    in every theme — including user-installed ones.</p>
+                <div class="table-wrapper">
+                    <table>
+                        <thead>
+                            <tr><th>Variable</th><th>Controls</th></tr>
+                        </thead>
+                        <tbody>
+                            <tr><td class="td-main"><code>--bg</code></td><td>Page background</td></tr>
+                            <tr><td class="td-main"><code>--bg-card</code></td><td>Card and panel background</td></tr>
+                            <tr><td class="td-main"><code>--bg-input</code></td><td>Input field background</td></tr>
+                            <tr><td class="td-main"><code>--bg-hover</code></td><td>Hover state background</td></tr>
+                            <tr><td class="td-main"><code>--text-main</code></td><td>Primary text color</td></tr>
+                            <tr><td class="td-main"><code>--text-muted</code></td><td>Secondary / muted text</td></tr>
+                            <tr><td class="td-main"><code>--text-dark</code></td><td>Dimmed label text</td></tr>
+                            <tr><td class="td-main"><code>--border</code></td><td>Default border color</td></tr>
+                            <tr><td class="td-main"><code>--border-focus</code></td><td>Focused / active border</td></tr>
+                            <tr><td class="td-main"><code>--accent</code></td><td>Accent / highlight color</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+                <p>A JavaScript variable <code>isDark</code> is also available in your script scope — it is
+                    <code>true</code> when the active theme is dark, <code>false</code> when light. Use it for
+                    colors that cannot be expressed as a CSS variable (e.g. canvas fills, SVG strokes).</p>
+                <pre><code class="language-javascript">// Theme-aware colors — works in light and dark themes
+container.innerHTML =
+  '&lt;div style="color:var(--text-main); background:var(--bg-card); border:1px solid var(--border); border-radius:6px; padding:12px;"&gt;'
+  + '&lt;span style="color:var(--text-muted);"&gt;Total this week&lt;/span&gt;'
+  + '&lt;/div&gt;';
+
+// Use isDark for values that can't be CSS variables
+var emptyColor = isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.06)';</code></pre>
+
+                <h3>Step 5 — Handle errors gracefully</h3>
                 <p>Always handle fetch errors and empty states so the panel does not break the dashboard:</p>
                 <pre><code class="language-javascript">fetch('/api/v1/stats/streaks', {
   headers: { 'Authorization': 'Bearer ' + token }

@@ -371,10 +371,11 @@
   <script type="module" src="/static/js/app.js?v=5"></script>
   <script type="module">
     import { api } from '/static/js/modules/api.js';
-    import { loadPluginStore } from '/static/js/modules/plugin-store.js';
+    import { loadPluginStore, openPluginDetailModal, closePluginDetailModal, setDetailRating, submitDetailReview, submitScreenshot, openPluginCodeModal, closePluginCodeModal } from '/static/js/modules/plugin-store.js';
     import { loadAdminPanelIfNeeded } from '/static/js/modules/dashboard.js';
     import { loadThemeStore, loadInstalledThemes, initThemeEditor } from '/static/js/modules/theme.js';
     import { applyProFeatures, updateUserUI } from '/static/js/modules/ui.js';
+    import { openPublicProfile } from '/static/js/modules/profile.js';
 
     // Make functions globally available for other inline scripts (e.g. onclick handlers)
     window.api = api;
@@ -385,6 +386,14 @@
     window.initThemeEditor = initThemeEditor;
     window.applyProFeatures = applyProFeatures;
     window.updateUserUI = updateUserUI;
+    window.openPublicProfile = openPublicProfile;
+    window.openPluginDetailModal = openPluginDetailModal;
+    window.closePluginDetailModal = closePluginDetailModal;
+    window.setDetailRating = setDetailRating;
+    window.submitDetailReview = submitDetailReview;
+    window.submitScreenshot = submitScreenshot;
+    window.openPluginCodeModal = openPluginCodeModal;
+    window.closePluginCodeModal = closePluginCodeModal;
 
     (async function initPluginStorePage() {
       const token = localStorage.getItem('ct_token');

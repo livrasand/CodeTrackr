@@ -267,10 +267,10 @@ function formatPanelValue(data) {
 }
 
 async function loadPluginPanels() {
+  const container = $('dash-plugins');
+  if (!container) return;
   try {
     const { panels } = await api('/plugins/panels');
-    const container = $('dash-plugins');
-    if (!container) return;
     container.innerHTML = '';
     if (!panels || panels.length === 0) return;
 
@@ -303,6 +303,13 @@ async function loadPluginPanels() {
 
         if (!acceptedVersion) {
           // First install — require manual review before running
+          if (panelEl) {
+            panelEl.innerHTML = `
+              <div style="display:flex; flex-direction:column; align-items:center; gap:8px; padding:16px; color:var(--text-muted); text-align:center;">
+                <span style="font-size:12px;">Review the plugin script before activating.</span>
+                <button class="btn" style="font-size:11px; padding:4px 12px;" onclick="openPluginDiffModal('${panel.title.replace(/'/g, "\\'")}', null, '${latestVersion}', '', ${JSON.stringify(latestScript)}, '${panel.plugin_id}')">Review &amp; Activate</button>
+              </div>`;
+          }
           const { showToast } = await import('./ui.js');
           showToast(
             `${panel.title} — review script before activating`,
@@ -359,20 +366,61 @@ async function loadPluginPanels() {
 
 function runPluginScript(script, container, token) {
   try {
+    // Leer CSS variables del documento padre para inyectarlas en el iframe
+    const rootStyle = getComputedStyle(document.documentElement);
+    const cssVarNames = [
+      '--bg', '--bg-card', '--bg-input', '--bg-hover',
+      '--text-main', '--text-muted', '--text-dark',
+      '--border', '--border-focus', '--border-main',
+      '--accent', '--radius', '--radius-sm',
+      '--font-main', '--font-mono',
+    ];
+    const cssVarsBlock = cssVarNames
+      .map(v => `${v}: ${rootStyle.getPropertyValue(v).trim()};`)
+      .filter(line => !line.endsWith(': ;'))
+      .join('\n      ');
+
+    // Detectar si el tema activo es oscuro comparando la luminosidad de --bg
+    const bgColor = rootStyle.getPropertyValue('--bg').trim();
+    const isDark = (() => {
+      const m = bgColor.match(/(\d+),\s*(\d+),\s*(\d+)/);
+      if (m) {
+        const lum = 0.299 * +m[1] + 0.587 * +m[2] + 0.114 * +m[3];
+        return lum < 128;
+      }
+      // Fallback: comparar con valor hex
+      if (bgColor.startsWith('#')) {
+        const hex = bgColor.slice(1);
+        const r = parseInt(hex.slice(0,2), 16);
+        const g = parseInt(hex.slice(2,4), 16);
+        const b = parseInt(hex.slice(4,6), 16);
+        return (0.299 * r + 0.587 * g + 0.114 * b) < 128;
+      }
+      return window.matchMedia('(prefers-color-scheme: dark)').matches;
+    })();
+    const colorScheme = isDark ? 'dark' : 'light';
+
+    // Adaptar el script para tema claro/oscuro antes de embeber en el iframe
+    const emptyCell = isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.06)';
+    const adaptedScript = script.replace(/rgba\(255,255,255,0\.0[0-9]+\)/g, emptyCell);
+
     // Crear sandbox iframe para aislar el código del plugin
     const iframe = document.createElement('iframe');
-    iframe.style.cssText = 'width:100%; height:400px; border:none; border-radius:4px;';
+    iframe.style.cssText = 'width:100%; height:0; border:none; border-radius:4px; display:block; overflow:hidden;';
     iframe.sandbox = 'allow-scripts';
+    iframe.scrolling = 'no';
     
     // Crear HTML seguro para el sandbox
     const sandboxHTML = `
       <!DOCTYPE html>
-      <html>
+      <html style="color-scheme:${colorScheme};">
         <head>
           <meta charset="utf-8">
           <style>
-            body { margin:0; padding:12px; font-family:system-ui; font-size:14px; }
-            .plugin-container { min-height:300px; }
+            :root { ${cssVarsBlock}; --is-dark: ${isDark ? 1 : 0}; --cell-empty: ${isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.06)'}; }
+            body { margin:0; padding:12px; font-family:var(--font-main, system-ui); font-size:14px; background:transparent; color:var(--text-main, inherit); }
+            .plugin-container { }
+            button { color-scheme: ${colorScheme}; }
           </style>
         </head>
         <body>
@@ -392,27 +440,41 @@ function runPluginScript(script, container, token) {
             };
             
             // Ejecutar script con API limitada
+            var container = safeAPI.container;
+            var token = safeAPI.token;
+            var isDark = ${isDark ? 'true' : 'false'};
             try {
-              (function() { ${script.replace(/`/g, '\\`').replace(/\$/g, '\\$')} }).call(safeAPI);
+              (function() { ${adaptedScript.replace(/`/g, '\\`').replace(/\$/g, '\\$')} }).call(safeAPI);
             } catch (e) {
               safeAPI.container.innerHTML = '<span style="color:red;">⚠ Plugin error: ' + e.message + '</span>';
             }
+            // Notificar al padre la altura real del contenido
+            function _notifyHeight() {
+              var h = document.body.scrollHeight;
+              parent.postMessage({ type: 'ct-plugin-resize', height: h }, '*');
+            }
+            _notifyHeight();
+            // Re-notificar si el contenido cambia dinámicamente
+            if (typeof MutationObserver !== 'undefined') {
+              new MutationObserver(_notifyHeight).observe(document.body, { childList: true, subtree: true, characterData: true });
+            }
+            setTimeout(_notifyHeight, 300);
+            setTimeout(_notifyHeight, 1000);
           </script>
         </body>
       </html>
     `;
     
+    iframe.srcdoc = sandboxHTML;
     container.innerHTML = '';
     container.appendChild(iframe);
-    
-    iframe.onload = () => {
-      try {
-        iframe.contentDocument.body.innerHTML = sandboxHTML;
-      } catch (e) {
-        container.textContent = '⚠ Plugin sandbox error';
-        console.warn('Plugin sandbox error:', e);
+    // Ajustar altura del iframe cuando el plugin reporte su tamaño real
+    const _onResize = (e) => {
+      if (e.data && e.data.type === 'ct-plugin-resize' && iframe.isConnected) {
+        iframe.style.height = (e.data.height + 16) + 'px';
       }
     };
+    window.addEventListener('message', _onResize);
     
   } catch (e) {
     container.textContent = '⚠ Plugin error';
@@ -420,17 +482,89 @@ function runPluginScript(script, container, token) {
   }
 }
 
+function _clipboardCopy(text) {
+  if (navigator.clipboard && navigator.clipboard.writeText) {
+    navigator.clipboard.writeText(text).catch(() => _clipboardFallback(text));
+  } else {
+    _clipboardFallback(text);
+  }
+}
+
+function _clipboardFallback(text) {
+  const ta = document.createElement('textarea');
+  ta.value = text;
+  ta.style.cssText = 'position:fixed; top:-9999px; left:-9999px;';
+  document.body.appendChild(ta);
+  ta.select();
+  document.execCommand('copy');
+  document.body.removeChild(ta);
+}
+
+function _showKeyRevealToast(key, showToastFn) {
+  const container = document.getElementById('toast-container');
+  if (!container) return;
+  const toast = document.createElement('div');
+  toast.style.cssText = `
+    background:var(--bg-card); border:1px solid var(--border-focus);
+    border-radius:var(--radius); padding:12px 16px; font-size:12px;
+    color:var(--text-muted); display:flex; flex-direction:column; gap:8px;
+    pointer-events:all; min-width:260px; max-width:420px;
+    box-shadow:0 4px 24px rgba(0,0,0,.4);
+  `;
+  toast.innerHTML = `
+    <span style="color:var(--text-main); font-size:12px;">New API key generated. Copy it now — it won't be shown again.</span>
+    <div style="display:flex; gap:6px; align-items:center;">
+      <input readonly value="${key}" style="flex:1; background:var(--bg-input); border:1px solid var(--border); color:var(--text-main); padding:5px 8px; font-size:11px; font-family:var(--font-mono); border-radius:var(--radius-sm);" onclick="this.select();">
+      <button class="btn" style="font-size:11px; padding:4px 10px; flex-shrink:0;">Copy</button>
+    </div>
+  `;
+  const btn = toast.querySelector('button');
+  const input = toast.querySelector('input');
+  btn.addEventListener('click', () => {
+    _clipboardCopy(key);
+    btn.textContent = 'Copied!';
+    setTimeout(() => toast.remove(), 1500);
+  });
+  input.addEventListener('click', () => input.select());
+  container.appendChild(toast);
+}
+
 // API Key Actions
 function initKeyActions() {
   const copyBtn = $('btn-copy-key');
   if (copyBtn) {
-    copyBtn.addEventListener('click', () => {
-      const key = $('dash-apikey')?.textContent;
-      if (key) {
-        navigator.clipboard.writeText(key).then(() => {
-          copyBtn.textContent = 'Copied!';
-          setTimeout(() => { copyBtn.textContent = 'Copy'; }, 2000);
-        });
+    copyBtn.addEventListener('click', async () => {
+      const keyEl = $('dash-apikey');
+      const fullKey = keyEl?.dataset.fullKey;
+      if (fullKey) {
+        _clipboardCopy(fullKey);
+        copyBtn.textContent = 'Copied!';
+        setTimeout(() => { copyBtn.textContent = 'Copy'; }, 2000);
+      } else {
+        // No hay clave completa disponible — generar nueva y mostrarla seleccionable
+        copyBtn.textContent = '…';
+        copyBtn.disabled = true;
+        try {
+          const result = await api('/keys', {
+            method: 'POST',
+            body: JSON.stringify({ name: 'New Key' }),
+          });
+          if (keyEl && result.key) {
+            const newKey = result.key.key;
+            keyEl.dataset.fullKey = newKey;
+            keyEl.textContent = `${newKey.slice(0, 12)}••••••••••••••••••••`;
+            // Mostrar la clave en un input seleccionable para que el usuario la copie
+            const { showToast } = await import('./ui.js');
+            _showKeyRevealToast(newKey, showToast);
+            copyBtn.textContent = 'Copy';
+          }
+        } catch (e) {
+          copyBtn.textContent = 'Copy';
+          const { showToast } = await import('./ui.js');
+          showToast('Failed to generate key: ' + e.message, [], 4000, 'danger');
+        } finally {
+          copyBtn.disabled = false;
+        }
       }
     });
   }
@@ -445,7 +579,8 @@ function initKeyActions() {
         });
         const keyEl = $('dash-apikey');
         if (keyEl && result.key) {
-          keyEl.textContent = result.key.key;
+          keyEl.dataset.fullKey = result.key.key;
+          keyEl.textContent = `${result.key.key.slice(0, 12)}••••••••••••••••••••`;
           const { showToast } = await import('./ui.js');
           showToast(`New API key created! Copy it now: ${result.key.key}`, [], 12000, 'success');
         }
@@ -567,9 +702,77 @@ async function loadAdminReports() {
   }
 }
 
+let _diffModalPluginId = null;
+
 function openPluginDiffModal(displayName, prevVersion, newVersion, oldScript, newScript, pluginId) {
-  // Implementation needed
+  const modal = document.getElementById('modal-plugin-diff');
+  if (!modal) return;
+
+  _diffModalPluginId = pluginId;
+
+  const titleEl = document.getElementById('diff-modal-title');
+  const versionEl = document.getElementById('diff-modal-version');
+  const contentEl = document.getElementById('diff-modal-content');
+
+  if (titleEl) titleEl.textContent = prevVersion ? `${displayName} — update available` : `${displayName} — review script`;
+  if (versionEl) versionEl.textContent = prevVersion ? `${prevVersion} → ${newVersion}` : `v${newVersion}`;
+
+  if (contentEl) {
+    if (!prevVersion) {
+      // Primera instalación — mostrar script completo como nuevo
+      contentEl.innerHTML = newScript
+        ? newScript.split('\n').map(l => `<span style="color:#4ade80;">+ ${escapeHtml(l)}</span>`).join('\n')
+        : '<span style="color:var(--text-muted);">No script.</span>';
+    } else {
+      // Diff entre versiones
+      const oldLines = (oldScript || '').split('\n');
+      const newLines = (newScript || '').split('\n');
+      const maxLen = Math.max(oldLines.length, newLines.length);
+      let html = '';
+      for (let i = 0; i < maxLen; i++) {
+        const o = oldLines[i];
+        const n = newLines[i];
+        if (o === n) {
+          html += `<span>  ${escapeHtml(o ?? '')}</span>\n`;
+        } else {
+          if (o !== undefined) html += `<span style="color:#f87171;">- ${escapeHtml(o)}</span>\n`;
+          if (n !== undefined) html += `<span style="color:#4ade80;">+ ${escapeHtml(n)}</span>\n`;
+        }
+      }
+      contentEl.innerHTML = html;
+    }
+  }
+
+  modal.style.display = 'flex';
 }
+
+function closePluginDiffModal() {
+  const modal = document.getElementById('modal-plugin-diff');
+  if (modal) modal.style.display = 'none';
+  _diffModalPluginId = null;
+}
+
+async function acceptPluginUpdateFromModal() {
+  if (!_diffModalPluginId) return;
+  try {
+    await api(`/store/plugin/${_diffModalPluginId}/accept`, { method: 'POST' });
+    closePluginDiffModal();
+    loadPluginPanels();
+  } catch (e) {
+    console.warn('Accept plugin error:', e);
+  }
+}
+
+function escapeHtml(str) {
+  return String(str)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;');
+}
+
+window.openPluginDiffModal = openPluginDiffModal;
+window.closePluginDiffModal = closePluginDiffModal;
+window.acceptPluginUpdateFromModal = acceptPluginUpdateFromModal;
 
 // Export functions that are used elsewhere
 export { loadApiKey, initKeyActions, formatPanelValue, loadPluginPanels, runPluginScript };

@@ -15,6 +15,7 @@ export async function loadPluginStore(filter = 'all') {
     let endpoint = filter === 'installed' ? '/store/installed' : '/store';
     const data = await api(endpoint);
     const plugins = data.plugins || data.installed || [];
+    if (filter === 'all') _allPlugins = plugins;
 
     let installedIds = new Set();
     if (filter === 'all' && isLoggedIn()) {
@@ -60,7 +61,7 @@ export async function loadPluginStore(filter = 'all') {
           `</div>` +
           `<div style="font-size:11px; color:var(--text-dark); font-family:var(--font-mono); margin-bottom:4px;">${p.name}</div>` +
           (p.author_username ? `<div style="font-size:11px; color:var(--text-muted); margin-bottom:6px;" onclick="event.stopPropagation(); openPublicProfile('${p.author_username}')">by <span style="cursor:pointer; text-decoration:underline; color:var(--text-dark);">@${p.author_username}</span></div>` : '') +
-          `<p style="font-size:12px; margin:4px 0 8px; color:var(--text-muted); flex-grow:1; line-height:1.5;">${p.description || 'No description provided.'}</p>` +
+          `<p style="font-size:12px; margin:4px 0 8px; color:var(--text-muted); flex-grow:1; line-height:1.5;">${linkifyDescription(p.description, plugins)}</p>` +
           `<div style="display:flex; gap:6px; align-items:center; margin-bottom:6px;">` +
             `<span style="font-size:11px; color:var(--text-dark);">↓ ${p.install_count || 0}</span>` +
             ratingHtml +
@@ -216,6 +217,15 @@ export async function uninstallPluginFromStore(pluginId, btn) {
   }
 }
 
+function linkifyDescription(text, allPlugins) {
+  if (!text) return 'No description provided.';
+  return text.replace(/@([a-zA-Z0-9_-]+)/g, (match, name) => {
+    const found = allPlugins.find(p => p.name === name);
+    if (!found) return match;
+    return `<span style="color:var(--accent); cursor:pointer; text-decoration:underline;" onclick="event.stopPropagation(); openPluginDetailModal('${found.id}', new Set())">${match}</span>`;
+  });
+}
+
 function starsHtml(avg, total) {
   const filled = Math.round(avg);
   let s = '';
@@ -223,9 +233,184 @@ function starsHtml(avg, total) {
   return s;
 }
 
-// Placeholder for functions that need to be implemented
-function openPluginDetailModal(pluginId, installedIds) {
-  // Implementation needed - will be in plugin-detail.js
+let _detailPluginId = null;
+let _detailRating = 0;
+let _allPlugins = [];
+
+export async function openPluginDetailModal(pluginId, installedIds) {
+  const modal = document.getElementById('modal-plugin-detail');
+  if (!modal) return;
+
+  _detailPluginId = pluginId;
+  _detailRating = 0;
+
+  // Limpiar mientras carga
+  const ids = ['detail-title','detail-version','detail-name','detail-description',
+                'detail-stars','detail-rating-count','detail-installs','detail-actions',
+                'detail-reviews-list'];
+  ids.forEach(id => { const el = document.getElementById(id); if (el) el.textContent = ''; });
+  modal.style.display = 'flex';
+
+  try {
+    const resp = await api(`/store/plugin/${pluginId}/detail`);
+    const p = resp.plugin || resp;
+    const reviews = resp.reviews || [];
+
+    // Header
+    const titleEl = document.getElementById('detail-title');
+    if (titleEl) titleEl.textContent = `${p.icon || '🔌'} ${p.display_name}`;
+    const versionEl = document.getElementById('detail-version');
+    if (versionEl) versionEl.textContent = `v${p.version}`;
+    const nameEl = document.getElementById('detail-name');
+    if (nameEl) nameEl.textContent = p.name;
+
+    // Rating
+    const avg = p.avg_rating ? Number(p.avg_rating) : 0;
+    const starsEl = document.getElementById('detail-stars');
+    if (starsEl) starsEl.textContent = starsHtml(Math.round(avg), 5);
+    const ratingCountEl = document.getElementById('detail-rating-count');
+    if (ratingCountEl) ratingCountEl.textContent = p.rating_count ? `${avg.toFixed(1)} (${p.rating_count})` : 'No ratings yet';
+
+    // Description
+    const descEl = document.getElementById('detail-description');
+    if (descEl) descEl.innerHTML = linkifyDescription(p.description, _allPlugins);
+
+    // Meta
+    const installsEl = document.getElementById('detail-installs');
+    if (installsEl) installsEl.textContent = p.install_count || 0;
+    const repoEl = document.getElementById('detail-repo');
+    if (repoEl) {
+      if (p.repository) {
+        repoEl.href = p.repository;
+        repoEl.style.display = 'inline';
+      } else {
+        repoEl.style.display = 'none';
+      }
+    }
+
+    // Author (usar author_username del plugin o del nivel raíz de la respuesta)
+    const authorUsername = p.author_username || resp.author_username;
+    if (authorUsername) {
+      const nameEl = document.getElementById('detail-name');
+      if (nameEl) nameEl.innerHTML = `${p.name} &nbsp;·&nbsp; <span style="cursor:pointer; text-decoration:underline;" onclick="openPublicProfile('${authorUsername}')">@${authorUsername}</span>`;
+    }
+
+    // Actions
+    const actionsEl = document.getElementById('detail-actions');
+    if (actionsEl) {
+      const isInstalled = installedIds instanceof Set ? installedIds.has(String(pluginId)) : false;
+      const isOwn = isLoggedIn() && getCurrentUser()?.username === authorUsername;
+      let btns = '';
+      if (isInstalled) {
+        btns += `<button class="btn" style="font-size:12px; color:var(--text-dark);" onclick="uninstallPluginFromStore('${pluginId}', this); closePluginDetailModal();">Uninstall</button>`;
+      } else {
+        btns += `<button class="btn" style="font-size:12px;" onclick="installPlugin('${pluginId}', this)">Install</button>`;
+      }
+      if (p.script) {
+        btns += `<button class="btn" style="font-size:12px; color:var(--text-dark);" onclick="openPluginCodeModal('${pluginId}', '${(p.display_name||'').replace(/'/g,"\\'")}', '${p.version}')">View Code</button>`;
+      }
+      if (!isOwn && isLoggedIn() && !isInstalled) {
+        btns += `<button class="btn" style="font-size:12px; color:var(--text-dark);" onclick="openReportModal('${pluginId}')">⚑ Report</button>`;
+      }
+      if (isOwn) {
+        btns += `<button class="btn" style="font-size:12px; color:#e53;" onclick="authorDeletePlugin('${pluginId}', this); closePluginDetailModal();">Delete</button>`;
+      }
+      actionsEl.innerHTML = btns;
+    }
+
+    // Review section
+    const reviewSection = document.getElementById('detail-review-section');
+    if (reviewSection) reviewSection.style.display = isLoggedIn() ? 'block' : 'none';
+
+    // Reviews list
+    const reviewsEl = document.getElementById('detail-reviews-list');
+    if (reviewsEl) {
+      if (reviews.length === 0) {
+        reviewsEl.innerHTML = '<div style="font-size:12px; color:var(--text-muted);">No reviews yet.</div>';
+      } else {
+        reviewsEl.innerHTML = reviews.map(r => `
+          <div style="border-top:1px solid var(--border); padding-top:10px; margin-top:10px;">
+            <div style="display:flex; justify-content:space-between; margin-bottom:4px;">
+              <span style="font-size:12px; font-weight:600; color:var(--text-main);">@${r.username || 'anonymous'}</span>
+              <span style="font-size:12px; color:var(--accent);">${starsHtml(r.rating || 0, 5)}</span>
+            </div>
+            ${r.body ? `<p style="margin:0; font-size:12px; color:var(--text-muted); line-height:1.5;">${r.body}</p>` : ''}
+          </div>`).join('');
+      }
+    }
+
+  } catch (e) {
+    console.warn('Plugin detail error:', e);
+    const descEl = document.getElementById('detail-description');
+    if (descEl) descEl.textContent = 'Error loading plugin details.';
+  }
+}
+
+export function closePluginDetailModal() {
+  const modal = document.getElementById('modal-plugin-detail');
+  if (modal) modal.style.display = 'none';
+  _detailPluginId = null;
+}
+
+export function setDetailRating(value) {
+  _detailRating = value;
+  const btns = document.querySelectorAll('#detail-star-input button');
+  btns.forEach((btn, i) => { btn.textContent = i < value ? '★' : '☆'; });
+}
+
+export async function submitDetailReview() {
+  if (!_detailPluginId || !isLoggedIn()) return;
+  const body = document.getElementById('detail-review-body')?.value.trim();
+  try {
+    await api(`/store/plugin/${_detailPluginId}/review`, {
+      method: 'POST',
+      body: JSON.stringify({ rating: _detailRating || null, body: body || null }),
+    });
+    showToast('Review submitted!', [], 3000, 'success');
+    openPluginDetailModal(_detailPluginId, new Set());
+  } catch (e) {
+    showToast('Error submitting review: ' + e.message, [], 4000, 'danger');
+  }
+}
+
+export async function submitScreenshot() {
+  if (!_detailPluginId) return;
+  const url = document.getElementById('detail-screenshot-url')?.value.trim();
+  const caption = document.getElementById('detail-screenshot-caption')?.value.trim();
+  if (!url) return;
+  try {
+    await api(`/store/plugin/${_detailPluginId}/screenshot`, {
+      method: 'POST',
+      body: JSON.stringify({ url, caption }),
+    });
+    showToast('Screenshot added!', [], 3000, 'success');
+    openPluginDetailModal(_detailPluginId, new Set());
+  } catch (e) {
+    showToast('Error adding screenshot: ' + e.message, [], 4000, 'danger');
+  }
+}
+
+export async function openPluginCodeModal(pluginId, displayName, version) {
+  const modal = document.getElementById('modal-plugin-code');
+  if (!modal) return;
+  const titleEl = document.getElementById('code-modal-title');
+  const metaEl = document.getElementById('code-modal-meta');
+  const contentEl = document.getElementById('code-modal-content');
+  if (titleEl) titleEl.textContent = displayName;
+  if (metaEl) metaEl.textContent = `v${version}`;
+  if (contentEl) contentEl.textContent = 'Loading…';
+  modal.style.display = 'flex';
+  try {
+    const data = await api(`/store/plugin/${pluginId}/script`);
+    if (contentEl) contentEl.textContent = data.script || '(no script)';
+  } catch (e) {
+    if (contentEl) contentEl.textContent = 'Error loading script.';
+  }
+}
+
+export function closePluginCodeModal() {
+  const modal = document.getElementById('modal-plugin-code');
+  if (modal) modal.style.display = 'none';
 }
 
 // Función para detectar si un plugin script intenta hacer peticiones externas
@@ -413,3 +598,10 @@ window.loadPluginStore = loadPluginStore;
 window.openPublishModal = openPublishModal;
 window.closePublishModal = closePublishModal;
 window.submitPublishPlugin = submitPublishPlugin;
+window.openPluginDetailModal = openPluginDetailModal;
+window.closePluginDetailModal = closePluginDetailModal;
+window.setDetailRating = setDetailRating;
+window.submitDetailReview = submitDetailReview;
+window.submitScreenshot = submitScreenshot;
+window.openPluginCodeModal = openPluginCodeModal;
+window.closePluginCodeModal = closePluginCodeModal;
