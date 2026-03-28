@@ -88,6 +88,39 @@ pub async fn create_key(
     })))
 }
 
+#[derive(serde::Deserialize)]
+pub struct RenameKeyRequest {
+    pub name: String,
+}
+
+pub async fn rename_key(
+    AuthenticatedUser(user): AuthenticatedUser,
+    State(state): State<AppState>,
+    axum::extract::Path(id): axum::extract::Path<Uuid>,
+    axum::Json(body): axum::Json<RenameKeyRequest>,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let name = body.name.trim().to_string();
+    if name.is_empty() {
+        return Err((StatusCode::BAD_REQUEST, Json(json!({"error": "Name cannot be empty"}))));
+    }
+
+    let result = sqlx::query(
+        "UPDATE api_keys SET name = $1 WHERE id = $2 AND user_id = $3"
+    )
+    .bind(&name)
+    .bind(id)
+    .bind(user.id)
+    .execute(&state.db.pool)
+    .await
+    .map_err(|e| error_handling::handle_database_error(e))?;
+
+    if result.rows_affected() == 0 {
+        return Err((StatusCode::NOT_FOUND, Json(json!({"error": "Key not found"}))));
+    }
+
+    Ok(Json(json!({"message": "Key renamed", "name": name})))
+}
+
 pub async fn delete_key(
     AuthenticatedUser(user): AuthenticatedUser,
     State(state): State<AppState>,

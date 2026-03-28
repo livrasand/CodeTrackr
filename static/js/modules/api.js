@@ -128,7 +128,12 @@ async function apiInternal(path, options = {}) {
     }
   }
 
-  if (!res.ok) throw new Error(`API error ${res.status}`);
+  if (!res.ok) {
+    const errBody = await res.text().catch(() => '');
+    let errMsg = `API error ${res.status}`;
+    try { const j = JSON.parse(errBody); if (j.error) errMsg = j.error; } catch (_) {}
+    throw new Error(errMsg);
+  }
   return parseJson(res);
 }
 

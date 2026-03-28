@@ -9,7 +9,7 @@ mod services;
 
 use axum::{
     Router,
-    routing::{get, post, delete},
+    routing::{get, post, delete, patch},
     extract::{Request, ConnectInfo},
     middleware::from_fn,
 };
@@ -355,6 +355,7 @@ fn api_routes(state: AppState, plugin_router: Router<AppState>) -> Router<AppSta
         .route("/keys", get(api::keys::list_keys))
         .route("/keys", post(api::keys::create_key))
         .route("/keys/:id", delete(api::keys::delete_key))
+        .route("/keys/:id", patch(api::keys::rename_key))
         // Refresh Tokens
         .route("/refresh-tokens", get(api::auth::list_refresh_tokens))
         .route("/refresh-tokens/:id", delete(api::auth::revoke_refresh_token))

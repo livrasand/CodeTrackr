@@ -235,10 +235,112 @@ async function loadDashSessions() {
 async function loadApiKey() {
   try {
     const { keys } = await api('/keys');
-    const keyEl = $('dash-apikey');
-    if (keyEl && keys && keys.length > 0) {
-      keyEl.textContent = `${keys[0].key_prefix}••••••••••••••••••••`;
+    const listEl = $('dash-apikey-list');
+    const countEl = $('dash-apikey-count');
+    const newBtn = $('btn-new-key');
+    if (!listEl) return;
+
+    if (countEl) countEl.textContent = `(${(keys || []).length}/5)`;
+    if (newBtn) newBtn.disabled = (keys || []).length >= 5;
+
+    listEl.innerHTML = '';
+    if (!keys || keys.length === 0) {
+      listEl.innerHTML = '<span style="font-size:12px; color:var(--text-muted);">No keys yet.</span>';
+      return;
     }
+
+    const securityNote = document.createElement('p');
+    securityNote.style.cssText = 'font-size:11px; color:var(--text-dark); margin:0 0 10px; font-family:var(--font-mono); line-height:1.6;';
+    securityNote.textContent = '⚠ Full keys are shown only once at creation time and are never stored in plaintext. For security, they cannot be retrieved after creation. Create a new key if you lost access to one.';
+    listEl.appendChild(securityNote);
+
+    keys.forEach(k => {
+      const row = document.createElement('div');
+      row.dataset.keyId = k.id;
+      row.style.cssText = 'display:flex; align-items:center; gap:8px; font-size:12px; font-family:var(--font-mono); padding:4px 0; border-bottom:1px solid var(--border);';
+      row.innerHTML = `
+        <span data-name-label="${k.id}" style="flex:1; color:var(--text-muted); cursor:pointer;" title="Click to rename">${k.name}</span>
+        <code style="color:var(--text-main); flex-shrink:0;">${k.key_prefix}••••••••••••</code>
+        <button class="btn" data-delete-key="${k.id}" style="padding:2px 8px; font-size:11px; color:var(--text-dark); flex-shrink:0;">✕</button>
+      `;
+      listEl.appendChild(row);
+    });
+
+    listEl.querySelectorAll('[data-name-label]').forEach(label => {
+      label.addEventListener('click', () => {
+        const id = label.dataset.nameLabel;
+        const current = label.textContent;
+        const input = document.createElement('input');
+        input.value = current;
+        input.style.cssText = 'flex:1; background:var(--bg-input); border:1px solid var(--border-focus); color:var(--text-main); padding:2px 6px; font-size:12px; font-family:var(--font-mono); border-radius:var(--radius-sm); outline:none;';
+        label.replaceWith(input);
+        input.focus();
+        input.select();
+
+        const save = async () => {
+          const newName = input.value.trim();
+          if (!newName || newName === current) {
+            input.replaceWith(label);
+            return;
+          }
+          try {
+            await api(`/keys/${id}`, { method: 'PATCH', body: JSON.stringify({ name: newName }) });
+            label.textContent = newName;
+          } catch (e) {
+            label.textContent = current;
+            const { showToast } = await import('./ui.js');
+            showToast('Failed to rename key: ' + e.message, [], 4000, 'danger');
+          }
+          input.replaceWith(label);
+        };
+
+        input.addEventListener('blur', save);
+        input.addEventListener('keydown', e => {
+          if (e.key === 'Enter') { e.preventDefault(); input.blur(); }
+          if (e.key === 'Escape') { input.value = current; input.blur(); }
+        });
+      });
+    });
+
+    listEl.querySelectorAll('[data-delete-key]').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const id = btn.dataset.deleteKey;
+        const row = listEl.querySelector(`[data-key-id="${id}"]`);
+        const nameEl = row?.querySelector('[data-name-label]');
+        const keyName = nameEl?.textContent || 'this key';
+
+        const overlay = document.createElement('div');
+        overlay.style.cssText = 'position:fixed; inset:0; background:rgba(0,0,0,.5); z-index:1000; display:flex; align-items:center; justify-content:center;';
+        overlay.innerHTML = `
+          <div style="background:var(--bg-card); border:1px solid var(--border); border-radius:var(--radius); padding:24px; max-width:340px; width:90%; font-size:13px;">
+            <p style="color:var(--text-main); margin:0 0 6px; font-weight:500;">Delete API key?</p>
+            <p style="color:var(--text-muted); margin:0 0 20px; font-size:12px;">
+              <code style="color:var(--text-main);">${keyName}</code> will be permanently deleted. Any application using it will stop working immediately.
+            </p>
+            <div style="display:flex; gap:8px; justify-content:flex-end;">
+              <button class="btn" id="cancel-delete-key" style="font-size:12px; padding:4px 14px;">Cancel</button>
+              <button class="btn" id="confirm-delete-key" style="font-size:12px; padding:4px 14px; border-color:var(--border-focus); color:var(--text-main);">Delete</button>
+            </div>
+          </div>
+        `;
+
+        document.body.appendChild(overlay);
+
+        overlay.querySelector('#cancel-delete-key').addEventListener('click', () => overlay.remove());
+        overlay.addEventListener('click', e => { if (e.target === overlay) overlay.remove(); });
+
+        overlay.querySelector('#confirm-delete-key').addEventListener('click', async () => {
+          overlay.remove();
+          try {
+            await api(`/keys/${id}`, { method: 'DELETE' });
+            await loadApiKey();
+          } catch (e) {
+            const { showToast } = await import('./ui.js');
+            showToast('Failed to delete key: ' + e.message, [], 4000, 'danger');
+          }
+        });
+      });
+    });
   } catch (e) {
     console.warn('Key error:', e);
   }
@@ -541,30 +643,9 @@ function initKeyActions() {
         copyBtn.textContent = 'Copied!';
         setTimeout(() => { copyBtn.textContent = 'Copy'; }, 2000);
       } else {
-        // No hay clave completa disponible — generar nueva y mostrarla seleccionable
-        copyBtn.textContent = '…';
-        copyBtn.disabled = true;
-        try {
-          const result = await api('/keys', {
-            method: 'POST',
-            body: JSON.stringify({ name: 'New Key' }),
-          });
-          if (keyEl && result.key) {
-            const newKey = result.key.key;
-            keyEl.dataset.fullKey = newKey;
-            keyEl.textContent = `${newKey.slice(0, 12)}••••••••••••••••••••`;
-            // Mostrar la clave en un input seleccionable para que el usuario la copie
-            const { showToast } = await import('./ui.js');
-            _showKeyRevealToast(newKey, showToast);
-            copyBtn.textContent = 'Copy';
-          }
-        } catch (e) {
-          copyBtn.textContent = 'Copy';
-          const { showToast } = await import('./ui.js');
-          showToast('Failed to generate key: ' + e.message, [], 4000, 'danger');
-        } finally {
-          copyBtn.disabled = false;
-        }
+        // La clave completa no está disponible — el servidor nunca la devuelve en GET /keys
+        const { showToast } = await import('./ui.js');
+        showToast('Full key not available. Create a new key with "New Key" to get a copyable value.', [], 5000, 'danger');
       }
     });
   }
@@ -575,14 +656,19 @@ function initKeyActions() {
       try {
         const result = await api('/keys', {
           method: 'POST',
-          body: JSON.stringify({ name: 'New Key' }),
+          body: JSON.stringify({}),
         });
-        const keyEl = $('dash-apikey');
-        if (keyEl && result.key) {
-          keyEl.dataset.fullKey = result.key.key;
-          keyEl.textContent = `${result.key.key.slice(0, 12)}••••••••••••••••••••`;
+        if (result && result.key) {
+          const newKey = result.key.key;
+          await loadApiKey();
+          // Guardar fullKey en el row recién creado para que Copy funcione
+          const listEl = $('dash-apikey-list');
+          if (listEl) {
+            const row = listEl.querySelector(`[data-key-id="${result.key.id}"]`);
+            if (row) row.dataset.fullKey = newKey;
+          }
           const { showToast } = await import('./ui.js');
-          showToast(`New API key created! Copy it now: ${result.key.key}`, [], 12000, 'success');
+          _showKeyRevealToast(newKey, showToast);
         }
       } catch (e) {
         const { showToast } = await import('./ui.js');

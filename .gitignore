@@ -3,3 +3,5 @@
 .sqlx/
 .rdb
 .vscode
+*.rdb
+.DS_Store

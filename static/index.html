@@ -318,12 +318,9 @@ X-API-Key: ct_your_key
 
       <!-- API Key -->
       <div class="card" style="margin-bottom:32px;">
-        <h3 style="font-size:12px; text-transform:uppercase; color:var(--text-dark); margin-bottom:12px;">API Key</h3>
-        <code id="dash-apikey" style="font-size:13px;">—</code>
-        <div style="margin-top:12px; display:flex; gap:8px;">
-          <button class="btn" id="btn-copy-key" style="padding:4px 10px; font-size:11px;">Copy</button>
-          <button class="btn" id="btn-new-key" style="padding:4px 10px; font-size:11px;">New Key</button>
-        </div>
+        <h3 style="font-size:12px; text-transform:uppercase; color:var(--text-dark); margin-bottom:12px;">API Keys <span id="dash-apikey-count" style="color:var(--text-dark); font-weight:normal;"></span></h3>
+        <div id="dash-apikey-list" style="display:flex; flex-direction:column; gap:8px; margin-bottom:12px;"></div>
+        <button class="btn" id="btn-new-key" style="padding:4px 10px; font-size:11px;">+ New Key</button>
       </div>
 
       <!-- Plugin Panels (installed) -->
@@ -473,6 +470,11 @@ X-API-Key: ct_your_key
       <div class="section-header">
         <h2 class="section-title">Pricing</h2>
         <p class="section-desc">Simple pricing: free cloud for individuals, Pro for power users, self-host for total control.</p>
+        <div style="display:inline-flex; align-items:center; gap:10px; margin-top:16px; background:var(--bg-card); border:1px solid var(--border); border-radius:var(--radius); padding:4px;">
+          <button id="billing-monthly" onclick="setBilling('monthly')" class="btn" style="font-size:12px; padding:4px 14px; background:var(--bg-hover);">Monthly</button>
+          <button id="billing-annual" onclick="setBilling('annual')" class="btn" style="font-size:12px; padding:4px 14px; opacity:0.5;">Annual <span style="color:var(--border-focus); font-size:10px; margin-left:4px;">Save 50%</span></button>
+        </div>
+        <p id="billing-note" style="font-size:11px; color:var(--text-dark); margin-top:8px; display:none;">Billed as $12/year</p>
       </div>
       <div class="grid-3">
         <div class="card" style="display:flex; flex-direction:column; justify-content:space-between; height: 100%;">
@@ -503,9 +505,10 @@ X-API-Key: ct_your_key
           style="border-color:var(--text-dark); display:flex; flex-direction:column; justify-content:space-between; height: 100%;">
           <div>
             <h3 style="color:var(--text-main);">Pro Cloud <span class="key-hint" style="margin-left:8px;"><svg style="width:10px; height:10px; vertical-align:text-bottom;" fill="currentColor" viewBox="0 0 24 24"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"></path></svg></span></h3>
-            <p style="font-size:24px; color:var(--text-main); font-family:var(--font-mono); margin: 8px 0 16px;">$1
-              <span style="font-size:12px; color:var(--text-dark);">/mo</span>
+            <p style="font-size:24px; color:var(--text-main); font-family:var(--font-mono); margin: 8px 0 4px;">
+              <span id="pro-price">$2</span><span style="font-size:12px; color:var(--text-dark);">/mo</span>
             </p>
+            <p id="pro-billed-note" style="font-size:11px; color:var(--text-dark); margin:0 0 12px; display:none;">Billed as $12/year</p>
             <p style="font-size:11px; color:var(--text-muted); margin:0 0 16px; font-style:italic;">For power users and small teams who want unlimited history and managed services without losing privacy.</p>
             <ul
               style="list-style-type: none; padding:0; margin-bottom: 24px; color:var(--text-muted); font-size:13px; line-height:2;">
@@ -544,6 +547,17 @@ X-API-Key: ct_your_key
       </div>
     </div>
   </section>
+  <script>
+    function setBilling(mode) {
+      const isAnnual = mode === 'annual';
+      document.getElementById('pro-price').textContent = isAnnual ? '$1' : '$2';
+      document.getElementById('pro-billed-note').style.display = isAnnual ? 'block' : 'none';
+      document.getElementById('billing-monthly').style.opacity = isAnnual ? '0.5' : '1';
+      document.getElementById('billing-monthly').style.background = isAnnual ? 'transparent' : 'var(--bg-hover)';
+      document.getElementById('billing-annual').style.opacity = isAnnual ? '1' : '0.5';
+      document.getElementById('billing-annual').style.background = isAnnual ? 'var(--bg-hover)' : 'transparent';
+    }
+  </script>
 
   <!-- ABOUT LETTER -->
   <section class="section" id="about">
