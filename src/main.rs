@@ -269,7 +269,27 @@ async fn main() -> anyhow::Result<()> {
         registry.build_router()
     };
 
+    // Rate limiter específico para badges (público, sin auth)
+    // Más permisivo que auth pero más restrictivo que API general
+    let badge_governor_conf = GovernorConfigBuilder::default()
+        .per_second(30)   // 30 req/s por IP
+        .burst_size(60)   // ráfaga de hasta 60
+        .key_extractor(RealIpKeyExtractor)
+        .finish()
+        .unwrap();
+    let badge_governor_layer = GovernorLayer {
+        config: std::sync::Arc::new(badge_governor_conf),
+    };
+
+    // Router de badges — público, sin middleware de auth
+    let badge_router = Router::new()
+        .route("/badge/:username/:metric", get(api::badge::get_badge))
+        .with_state(state.clone())
+        .layer(badge_governor_layer);
+
     let app = Router::new()
+        // ── Public SVG badges (no auth) ──────────────────────────────────
+        .merge(badge_router)
         // ── API v1 ──────────────────────────────────────────────────────
         .nest("/api/v1", api_routes(state.clone(), plugin_router))
         // ── Auth ────────────────────────────────────────────────────────

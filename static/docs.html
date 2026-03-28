@@ -306,6 +306,7 @@
                     <a href="#api-leaderboards" class="sidebar-link">Leaderboards</a>
                     <a href="#api-users" class="sidebar-link">Users</a>
                     <a href="#api-keys" class="sidebar-link">API Keys</a>
+                    <a href="#api-badges" class="sidebar-link">SVG Badges</a>
                     <a href="#api-export" class="sidebar-link">Export</a>
                     <a href="#api-billing" class="sidebar-link">Billing</a>
                 </div>
@@ -2686,6 +2687,85 @@ button.onclick = async () => {
                 <p><code>Authorization: Bearer</code></p>
                 <h4>Example Response</h4>
                 <pre><code class="language-json">{ "message": "API key deleted" }</code></pre>
+            </section>
+
+            <!-- ── SVG BADGES ────────────────────────────────────────── -->
+            <section id="api-badges">
+                <h2>SVG Badges</h2>
+                <p>Generate embeddable SVG badges for a GitHub <code>README.md</code> or any webpage. Badges require <strong>no authentication</strong> and no token in the URL — they are driven by the <a href="/plugin-store">badge-generator</a> plugin and the user's public profile setting.</p>
+
+                <h3>Get Badge</h3>
+                <p><code>GET /badge/:username/:metric</code></p>
+                <p>Returns an <code>image/svg+xml</code> response. No <code>Authorization</code> header required. If the user's profile is private or the username does not exist, a <em>profile private</em> badge is returned — both cases are intentionally indistinguishable to prevent username enumeration.</p>
+
+                <h4>Path Parameters</h4>
+                <div class="table-wrapper">
+                    <table>
+                        <thead><tr><th>Parameter</th><th>Type</th><th>Description</th></tr></thead>
+                        <tbody>
+                            <tr><td class="td-main"><code>username</code></td><td>string</td><td>The public username of the CodeTrackr user.</td></tr>
+                            <tr><td class="td-main"><code>metric</code></td><td>string</td><td>The badge metric to display (see table below). Only alphanumeric characters, hyphens, and underscores are accepted.</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+
+                <h4>Query Parameters</h4>
+                <div class="table-wrapper">
+                    <table>
+                        <thead><tr><th>Parameter</th><th>Default</th><th>Description</th></tr></thead>
+                        <tbody>
+                            <tr><td class="td-main"><code>style</code></td><td><code>flat</code></td><td>Badge style forwarded to the plugin. Currently <code>flat</code> is the only built-in style; plugins may support more.</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+
+                <h4>Available Metrics (badge-generator plugin)</h4>
+                <div class="table-wrapper">
+                    <table>
+                        <thead><tr><th>Metric</th><th>Label</th><th>Example value</th><th>Description</th></tr></thead>
+                        <tbody>
+                            <tr><td class="td-main"><code>coding-time</code></td><td>code time</td><td>14h 32m</td><td>Total coding time in the last 7 days.</td></tr>
+                            <tr><td class="td-main"><code>today</code></td><td>today</td><td>2h 15m</td><td>Coding time since midnight UTC.</td></tr>
+                            <tr><td class="td-main"><code>streak</code></td><td>streak</td><td>7 days 🔥</td><td>Current consecutive-days coding streak.</td></tr>
+                            <tr><td class="td-main"><code>top-language</code></td><td>language</td><td>Rust</td><td>Most-used language by seconds in the last 7 days.</td></tr>
+                            <tr><td class="td-main"><code>all-time</code></td><td>all time</td><td>1,234h</td><td>Total hours coded across all recorded heartbeats.</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+
+                <h4>Response</h4>
+                <p>Content-Type: <code>image/svg+xml</code><br>Cache-Control: <code>max-age=3600, s-maxage=3600</code> — badges are cached by CDN and browsers for 1 hour.</p>
+                <p>The SVG follows the <a href="https://shields.io" target="_blank" rel="noopener">Shields.io</a> flat badge format: a dark left pill (<em>label</em>) and a colored right pill (<em>value</em>). Color changes automatically based on activity level.</p>
+
+                <h3>Embed in a README</h3>
+                <pre><code class="language-markdown">![code time](https://codetrackr.leapcell.app/badge/YOUR_USERNAME/coding-time)
+![streak](https://codetrackr.leapcell.app/badge/YOUR_USERNAME/streak)
+![top language](https://codetrackr.leapcell.app/badge/YOUR_USERNAME/top-language)
+![today](https://codetrackr.leapcell.app/badge/YOUR_USERNAME/today)
+![all time](https://codetrackr.leapcell.app/badge/YOUR_USERNAME/all-time)</code></pre>
+
+                <h3>Fetch via curl</h3>
+                <pre><code class="language-bash"># Save the SVG locally
+curl https://codetrackr.leapcell.app/badge/livrasand/coding-time -o coding-time.svg
+
+# With query params
+curl "https://codetrackr.leapcell.app/badge/livrasand/streak?style=flat" -o streak.svg</code></pre>
+
+                <h3>Privacy &amp; Security</h3>
+                <ul>
+                    <li><strong>Public profiles only:</strong> Badges only render for users who have <code>is_public = true</code> set in their profile settings. Private users receive an identical <em>profile private</em> badge whether the username exists or not.</li>
+                    <li><strong>No token in the URL:</strong> Badges never require an API key. This eliminates the risk of leaking credentials through git history or CDN logs.</li>
+                    <li><strong>Aggregated data only:</strong> Badges expose only aggregated statistics (total seconds, streak, top language). Raw file paths, branch names, and commit data are never exposed.</li>
+                    <li><strong>Rate limited:</strong> The <code>/badge/*</code> route is independently rate-limited at 30 requests/s per IP (burst 60) — separate from the authenticated API limits.</li>
+                    <li><strong>Plugin-driven:</strong> The badge logic lives in the <code>badge-generator</code> plugin. You can inspect the full source in the <a href="/plugin-store">Plugin Store</a>. Custom metrics can be added by extending the plugin's <code>endpoints</code> object.</li>
+                </ul>
+
+                <h3>Enabling public profile</h3>
+                <p>Badges require the target user's profile to be public. Enable it in the dashboard under <strong>Settings → Public profile</strong>, or via the API:</p>
+                <pre><code class="language-bash">curl -X POST https://codetrackr.leapcell.app/api/v1/user/profile/update \
+  -H "Authorization: Bearer YOUR_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"is_public": true}'</code></pre>
             </section>
 
             <!-- ── EXPORT ─────────────────────────────────────────────── -->

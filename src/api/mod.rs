@@ -1,4 +1,5 @@
 pub mod auth;
+pub mod badge;
 pub mod billing;
 pub mod cteditor;
 pub mod export;
