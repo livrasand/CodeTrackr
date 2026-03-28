@@ -21,6 +21,7 @@ pub struct UpdateProfileRequest {
     pub profile_show_plugins: Option<bool>,
     pub profile_show_streak: Option<bool>,
     pub available_for_hire: Option<bool>,
+    pub show_in_leaderboard: Option<bool>,
 }
 
 pub async fn get_me(
@@ -44,6 +45,7 @@ pub async fn get_me(
         "profile_show_plugins": user.profile_show_plugins,
         "profile_show_streak": user.profile_show_streak,
         "available_for_hire": user.available_for_hire,
+        "show_in_leaderboard": user.show_in_leaderboard,
         "country": user.country,
         "timezone": user.timezone,
         "created_at": user.created_at,
@@ -189,8 +191,9 @@ pub async fn update_profile(
             profile_show_plugins   = COALESCE($7, profile_show_plugins),
             profile_show_streak    = COALESCE($8, profile_show_streak),
             available_for_hire     = COALESCE($9, available_for_hire),
+            show_in_leaderboard    = COALESCE($10, show_in_leaderboard),
             updated_at             = NOW()
-           WHERE id = $10"#
+           WHERE id = $11"#
     )
     .bind(&body.bio)
     .bind(&body.website)
@@ -201,6 +204,7 @@ pub async fn update_profile(
     .bind(body.profile_show_plugins)
     .bind(body.profile_show_streak)
     .bind(body.available_for_hire)
+    .bind(body.show_in_leaderboard)
     .bind(user.id)
     .execute(&state.db.pool)
     .await

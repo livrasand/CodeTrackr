@@ -40,6 +40,7 @@ pub struct User {
     pub profile_show_plugins: bool,
     pub profile_show_streak: bool,
     pub available_for_hire: bool,
+    pub show_in_leaderboard: bool,
     pub country: Option<String>,
     pub timezone: String,
     pub created_at: DateTime<Utc>,

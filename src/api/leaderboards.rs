@@ -71,7 +71,7 @@ pub async fn get_global(
     for (i, (user_id_str, score)) in entries.iter().enumerate() {
         if let Ok(uid) = user_id_str.parse::<Uuid>() {
             let row = sqlx::query(
-                "SELECT id, username, display_name, avatar_url, country, available_for_hire FROM users WHERE id = $1 AND is_public = true"
+                "SELECT id, username, display_name, avatar_url, country, available_for_hire FROM users WHERE id = $1 AND is_public = true AND show_in_leaderboard = true"
             )
             .bind(uid)
             .fetch_optional(&state.db.pool)
@@ -164,7 +164,7 @@ pub async fn get_by_language(
     for (i, (user_id_str, score)) in entries.iter().enumerate() {
         if let Ok(uid) = user_id_str.parse::<Uuid>() {
             let row = sqlx::query(
-                "SELECT id, username, display_name, avatar_url, country FROM users WHERE id = $1 AND is_public = true"
+                "SELECT id, username, display_name, avatar_url, country FROM users WHERE id = $1 AND is_public = true AND show_in_leaderboard = true"
             )
             .bind(uid)
             .fetch_optional(&state.db.pool)

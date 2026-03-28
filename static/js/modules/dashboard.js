@@ -616,6 +616,41 @@ export function adminShowTab(tab, btn) {
 }
 window.adminShowTab = adminShowTab;
 
+// Save profile settings
+export async function saveProfileSettings() {
+  const { showToast } = await import('./ui.js');
+  const bioEl = $('profile-bio');
+  const websiteEl = $('profile-website');
+
+  const payload = {
+    bio: bioEl?.value ?? undefined,
+    website: websiteEl?.value ?? undefined,
+    is_public: $('ptog-public')?.checked ?? undefined,
+    profile_show_activity: $('ptog-activity')?.checked ?? undefined,
+    profile_show_streak: $('ptog-streak')?.checked ?? undefined,
+    profile_show_languages: $('ptog-languages')?.checked ?? undefined,
+    profile_show_projects: $('ptog-projects')?.checked ?? undefined,
+    profile_show_plugins: $('ptog-plugins')?.checked ?? undefined,
+    available_for_hire: $('ptog-hire')?.checked ?? undefined,
+    show_in_leaderboard: $('ptog-leaderboard')?.checked ?? undefined,
+  };
+
+  try {
+    await api('/user/profile/update', { method: 'POST', body: JSON.stringify(payload) });
+    const statusEl = $('profile-save-status');
+    if (statusEl) {
+      statusEl.style.display = 'inline';
+      setTimeout(() => { statusEl.style.display = 'none'; }, 2000);
+    }
+    const { setCurrentUser, getCurrentUser } = await import('./auth.js');
+    const user = getCurrentUser();
+    if (user) setCurrentUser({ ...user, ...payload });
+  } catch (e) {
+    showToast('Failed to save profile: ' + e.message, [], 4000, 'danger');
+  }
+}
+window.saveProfileSettings = saveProfileSettings;
+
 // Profile settings
 async function loadProfileSettings() {
   const user = getCurrentUser();
@@ -642,6 +677,7 @@ async function loadProfileSettings() {
     'ptog-projects': 'profile_show_projects',
     'ptog-plugins': 'profile_show_plugins',
     'ptog-hire': 'available_for_hire',
+    'ptog-leaderboard': 'show_in_leaderboard',
   };
   for (const [elId, field] of Object.entries(togMap)) {
     const el = $(elId);

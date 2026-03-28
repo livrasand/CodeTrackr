@@ -1,0 +1,22 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="210" height="44" viewBox="0 0 210 44" fill="none">
+  <rect width="190" height="44" rx="8" fill="black"/>
+  
+  <!-- Texto superior -->
+  <text x="60" y="18" fill="#BDBDBD" font-family="Geist, sans-serif" font-size="9" font-weight="400" text-anchor="start">
+    GET IT ON
+  </text>
+
+  <!-- Texto principal -->
+  <text x="60" y="32" fill="white" font-family="Geist, sans-serif" font-size="14" font-weight="500" text-anchor="start">
+    Open VSX Registry
+  </text>
+
+  <!-- Logo Open VSX (simplificado y escalado) -->
+  <g transform="translate(13.5, 10.5) scale(0.19)">
+    <path d="M30 44.2L52.6 5H7.3zM4.6 88.5h45.3L27.2 49.4zm51 0l22.6 39.2 22.6-39.2z" fill="#c160ef"/>
+    <path d="M52.6 5L30 44.2h45.2zM27.2 49.4l22.7 39.1 22.6-39.1zm51 0L55.6 88.5h45.2z" fill="#a60ee5"/>
+  </g>
+
+  <!-- Separador -->
+  <line x1="48" y1="0" x2="48" y2="44" stroke="#5E5E5E"/>
+</svg>
