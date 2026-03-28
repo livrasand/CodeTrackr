@@ -182,6 +182,27 @@ export async function openPublicProfile(username) {
       }
     }
 
+    // Themes
+    const themesCard = $('pp-themes-card');
+    const themesGrid = $('pp-themes-grid');
+    if (themesCard && themesGrid) {
+      if (p.show_plugins && p.themes && p.themes.length > 0) {
+        themesCard.style.display = '';
+        themesGrid.innerHTML = p.themes.map(t => `
+          <div class="card">
+            <div style="display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:4px;">
+              <h3 style="margin:0; font-size:13px;">${t.icon || '🎨'} ${t.display_name}</h3>
+              <span class="key-hint" style="font-size:10px;">v${t.version}</span>
+            </div>
+            <p style="font-size:11px; color:var(--text-muted); margin:4px 0 8px; line-height:1.4;">${t.description || ''}</p>
+            <div style="font-size:11px; color:var(--text-dark);">↓ ${t.install_count}</div>
+          </div>
+        `).join('');
+      } else {
+        themesCard.style.display = 'none';
+      }
+    }
+
     // Available for hire
     const hireSection = $('pp-hire-section');
     if (hireSection) hireSection.style.display = p.available_for_hire ? '' : 'none';

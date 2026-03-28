@@ -207,12 +207,12 @@ async function loadDashSessions() {
       container.innerHTML = `<span style="font-size:12px; color:var(--text-muted);">No sessions yet.</span>`;
       return;
     }
-    const workIcon = { 'writing': '✏', 'debugging': '🐛', 'reading': '👁', 'config': '⚙' };
+    const workIcon = { 'writing': '✎', 'debugging': '✦', 'reading': '◉', 'config': '⚙' };
     container.innerHTML = sessions.slice(0, 6).map(s => {
       const start = new Date(s.start);
       const timeStr = start.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
       const dateStr = start.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
-      const icon = workIcon[s.dominant_work_type] || '💻';
+      const icon = workIcon[s.dominant_work_type] || '▸';
       return `
         <div style="display:flex; align-items:center; gap:10px; padding:6px 0; border-bottom:1px solid var(--border);">
           <span style="font-size:14px; flex-shrink:0;">${icon}</span>
@@ -368,15 +368,20 @@ function formatPanelValue(data) {
   return '—';
 }
 
+const _panelDataMap = new Map();
+
 async function loadPluginPanels() {
   const container = $('dash-plugins');
   if (!container) return;
   try {
     const { panels } = await api('/plugins/panels');
     container.innerHTML = '';
+    _panelDataMap.clear();
     if (!panels || panels.length === 0) return;
 
-    const uniquePanels = panels.filter((p, i, arr) => arr.findIndex(x => x.panel === p.panel) === i);
+    const uniquePanels = panels
+      .filter((p, i, arr) => arr.findIndex(x => x.panel === p.panel) === i)
+      .filter(p => p.plugin_type !== 'lifecycle' && p.widget_type !== null && p.widget_type !== undefined);
     for (const panel of uniquePanels) {
       const div = document.createElement('div');
       div.className = 'plugin-panel card';
@@ -404,12 +409,14 @@ async function loadPluginPanels() {
         const acceptedScript = panel.accepted_script || '';
 
         if (!acceptedVersion) {
+          // Guardar datos del panel en el Map para referenciarlos desde el botón
+          _panelDataMap.set(panel.plugin_id, { title: panel.title, latestVersion, latestScript });
           // First install — require manual review before running
           if (panelEl) {
             panelEl.innerHTML = `
               <div style="display:flex; flex-direction:column; align-items:center; gap:8px; padding:16px; color:var(--text-muted); text-align:center;">
                 <span style="font-size:12px;">Review the plugin script before activating.</span>
-                <button class="btn" style="font-size:11px; padding:4px 12px;" onclick="openPluginDiffModal('${panel.title.replace(/'/g, "\\'")}', null, '${latestVersion}', '', ${JSON.stringify(latestScript)}, '${panel.plugin_id}')">Review &amp; Activate</button>
+                <button class="btn" style="font-size:11px; padding:4px 12px;" onclick="_openPanelDiff('${panel.plugin_id}')">Review &amp; Activate</button>
               </div>`;
           }
           const { showToast } = await import('./ui.js');
@@ -506,77 +513,100 @@ function runPluginScript(script, container, token) {
     const emptyCell = isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.06)';
     const adaptedScript = script.replace(/rgba\(255,255,255,0\.0[0-9]+\)/g, emptyCell);
 
+    // ID único por iframe para filtrar mensajes postMessage entre múltiples plugins
+    const frameId = 'ct-' + Math.random().toString(36).slice(2);
+
+    // Recoger CSS vars actuales para enviarlas al iframe
+    const cssVars = {};
+    cssVarNames.forEach(v => {
+      const val = rootStyle.getPropertyValue(v).trim();
+      if (val) cssVars[v] = val;
+    });
+
     // Crear sandbox iframe para aislar el código del plugin
     const iframe = document.createElement('iframe');
     iframe.style.cssText = 'width:100%; height:0; border:none; border-radius:4px; display:block; overflow:hidden;';
     iframe.sandbox = 'allow-scripts';
     iframe.scrolling = 'no';
-    
-    // Crear HTML seguro para el sandbox
-    const sandboxHTML = `
-      <!DOCTYPE html>
-      <html style="color-scheme:${colorScheme};">
-        <head>
-          <meta charset="utf-8">
-          <style>
-            :root { ${cssVarsBlock}; --is-dark: ${isDark ? 1 : 0}; --cell-empty: ${isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.06)'}; }
-            body { margin:0; padding:12px; font-family:var(--font-main, system-ui); font-size:14px; background:transparent; color:var(--text-main, inherit); }
-            .plugin-container { }
-            button { color-scheme: ${colorScheme}; }
-          </style>
-        </head>
-        <body>
-          <div class="plugin-container" id="plugin-container"></div>
-          <script>
-            // API segura limitada para el plugin
-            const safeAPI = {
-              container: document.getElementById('plugin-container'),
-              token: '${token}',
-              fetch: function(url, options) {
-                // Solo permitir fetch al mismo dominio
-                if (url.startsWith('/') || url.includes(window.location.hostname)) {
-                  return fetch(url, options);
-                }
-                throw new Error('External requests not allowed');
-              }
-            };
-            
-            // Ejecutar script con API limitada
-            var container = safeAPI.container;
-            var token = safeAPI.token;
-            var isDark = ${isDark ? 'true' : 'false'};
-            try {
-              (function() { ${adaptedScript.replace(/`/g, '\\`').replace(/\$/g, '\\$')} }).call(safeAPI);
-            } catch (e) {
-              safeAPI.container.innerHTML = '<span style="color:red;">⚠ Plugin error: ' + e.message + '</span>';
-            }
-            // Notificar al padre la altura real del contenido
-            function _notifyHeight() {
-              var h = document.body.scrollHeight;
-              parent.postMessage({ type: 'ct-plugin-resize', height: h }, '*');
-            }
-            _notifyHeight();
-            // Re-notificar si el contenido cambia dinámicamente
-            if (typeof MutationObserver !== 'undefined') {
-              new MutationObserver(_notifyHeight).observe(document.body, { childList: true, subtree: true, characterData: true });
-            }
-            setTimeout(_notifyHeight, 300);
-            setTimeout(_notifyHeight, 1000);
-          </script>
-        </body>
-      </html>
-    `;
-    
+
+    // Crear HTML estático para el sandbox — el script llega via postMessage
+    const sandboxHTML = `<!DOCTYPE html>
+<html style="color-scheme:${colorScheme};">
+<head>
+<meta charset="utf-8">
+<style>
+:root { ${cssVarsBlock} --is-dark: ${isDark ? 1 : 0}; }
+body { margin:0; padding:12px; font-family:var(--font-main, system-ui); font-size:14px; background:transparent; color:var(--text-main, inherit); }
+</style>
+</head>
+<body>
+<div id="plugin-container"></div>
+<script>
+(function() {
+  var FRAME_ID = '${frameId}';
+  var safeAPI = {
+    container: document.getElementById('plugin-container'),
+    token: null,
+    isDark: ${isDark ? 'true' : 'false'},
+    fetch: function(url, opts) {
+      if (url.startsWith('/') || url.includes(location.hostname)) return fetch(url, opts);
+      throw new Error('External requests not allowed');
+    }
+  };
+  function _notifyHeight() {
+    parent.postMessage({ type: 'ct-plugin-resize', frameId: FRAME_ID, height: document.body.scrollHeight }, '*');
+  }
+  window.addEventListener('message', function(e) {
+    if (!e.data || e.data.__ct_type !== 'run' || e.data.frameId !== FRAME_ID) return;
+    safeAPI.token = e.data.token || null;
+    // Aplicar CSS vars del tema padre al :root del iframe
+    if (e.data.cssVars) {
+      var root = document.documentElement;
+      Object.keys(e.data.cssVars).forEach(function(k) {
+        root.style.setProperty(k, e.data.cssVars[k]);
+      });
+    }
+    var container = safeAPI.container;
+    var token = safeAPI.token;
+    var isDark = safeAPI.isDark;
+    var fetch = safeAPI.fetch.bind(safeAPI);
+    try {
+      new Function('container', 'token', 'isDark', 'fetch', e.data.script)(container, token, isDark, fetch);
+    } catch(err) {
+      safeAPI.container.innerHTML = '<span style="color:red;">⚠ Plugin error: ' + err.message + '</span>';
+    }
+    _notifyHeight();
+    if (typeof MutationObserver !== 'undefined') {
+      new MutationObserver(_notifyHeight).observe(document.body, { childList: true, subtree: true, characterData: true });
+    }
+    setTimeout(_notifyHeight, 500);
+    setTimeout(_notifyHeight, 1500);
+    setTimeout(_notifyHeight, 3000);
+  });
+  parent.postMessage({ __ct_type: 'ready', _dash: true, frameId: FRAME_ID }, '*');
+})();
+<\/script>
+</body>
+</html>`;
+
+    // Registrar listeners ANTES de asignar srcdoc para evitar race condition
+    const _onMsg = (e) => {
+      if (!e.data) return;
+      // Sandbox listo: enviar script + cssVars vía postMessage con frameId
+      if (e.data.__ct_type === 'ready' && e.data._dash && e.data.frameId === frameId) {
+        iframe.contentWindow.postMessage({ __ct_type: 'run', frameId, script: adaptedScript, token: token || '', cssVars }, '*');
+        return;
+      }
+      // Ajustar altura SOLO del iframe que reportó, identificado por frameId
+      if (e.data.type === 'ct-plugin-resize' && e.data.frameId === frameId && iframe.isConnected) {
+        iframe.style.height = Math.max(e.data.height, 0) + 'px';
+      }
+    };
+    window.addEventListener('message', _onMsg);
+
     iframe.srcdoc = sandboxHTML;
     container.innerHTML = '';
     container.appendChild(iframe);
-    // Ajustar altura del iframe cuando el plugin reporte su tamaño real
-    const _onResize = (e) => {
-      if (e.data && e.data.type === 'ct-plugin-resize' && iframe.isConnected) {
-        iframe.style.height = (e.data.height + 16) + 'px';
-      }
-    };
-    window.addEventListener('message', _onResize);
     
   } catch (e) {
     container.textContent = '⚠ Plugin error';
@@ -685,11 +715,11 @@ export async function loadAdminPanelIfNeeded() {
   const panel = $('admin-panel');
   if (panel) panel.style.display = 'block';
   
-  await Promise.allSettled([loadAdminPlugins(), loadAdminReports()]);
+  await Promise.allSettled([loadAdminPlugins(), loadAdminReports(), loadAdminThemes()]);
 }
 
 export function adminShowTab(tab, btn) {
-  const tabs = ['plugins', 'reports'];
+  const tabs = ['plugins', 'reports', 'themes'];
   tabs.forEach(t => {
     const el = $(`admin-tab-${t}`);
     if (el) el.style.display = t === tab ? 'block' : 'none';
@@ -824,6 +854,38 @@ async function loadAdminReports() {
   }
 }
 
+async function loadAdminThemes() {
+  try {
+    const { themes } = await api('/themes');
+    const container = $('admin-themes-list');
+    if (!container || !themes) return;
+
+    container.innerHTML = themes.map(t => `
+      <div style="display:flex; justify-content:space-between; align-items:center; padding:8px; border-bottom:1px solid var(--border);">
+        <div style="font-size:12px;">
+          <strong>${t.icon || '🎨'} ${t.display_name}</strong> by @${t.author_username || 'unknown'} · v${t.version} · ${t.install_count} installs
+          ${t.is_banned ? ' <span style="color:#e53;">(Banned)</span>' : ''}
+        </div>
+        <div style="display:flex; gap:6px;">
+          <button class="btn" style="padding:2px 8px; font-size:10px; color:#e53;" onclick="adminDeleteTheme('${t.id}')">Delete</button>
+        </div>
+      </div>
+    `).join('');
+  } catch (e) {
+    console.warn('Admin themes error:', e);
+  }
+}
+
+export async function adminDeleteTheme(themeId) {
+  try {
+    await api(`/themes/admin/${themeId}`, { method: 'DELETE' });
+    await loadAdminThemes();
+  } catch (e) {
+    console.warn('Delete theme error:', e);
+  }
+}
+window.adminDeleteTheme = adminDeleteTheme;
+
 let _diffModalPluginId = null;
 
 function openPluginDiffModal(displayName, prevVersion, newVersion, oldScript, newScript, pluginId) {
@@ -895,6 +957,10 @@ function escapeHtml(str) {
 window.openPluginDiffModal = openPluginDiffModal;
 window.closePluginDiffModal = closePluginDiffModal;
 window.acceptPluginUpdateFromModal = acceptPluginUpdateFromModal;
+window._openPanelDiff = function(pluginId) {
+  const d = _panelDataMap.get(pluginId);
+  if (d) openPluginDiffModal(d.title, null, d.latestVersion, '', d.latestScript, pluginId);
+};
 
 // Export functions that are used elsewhere
 export { loadApiKey, initKeyActions, formatPanelValue, loadPluginPanels, runPluginScript };

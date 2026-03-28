@@ -279,7 +279,7 @@ pub async fn create_anonymous_account(
         stripe_subscription_id, plan_expires_at, is_public, is_admin, bio,
         website, profile_show_languages, profile_show_projects,
         profile_show_activity, profile_show_plugins, profile_show_streak,
-        available_for_hire, country, timezone, created_at, updated_at
+        available_for_hire, show_in_leaderboard, country, timezone, created_at, updated_at
         "#
     )
     .bind(user_id)
@@ -320,7 +320,7 @@ pub async fn create_anonymous_account(
         profile_show_plugins: user_row.get("profile_show_plugins"),
         profile_show_streak: user_row.get("profile_show_streak"),
         available_for_hire: user_row.get("available_for_hire"),
-        show_in_leaderboard: user_row.get("show_in_leaderboard"),
+        show_in_leaderboard: user_row.try_get("show_in_leaderboard").unwrap_or(true),
         country: user_row.get("country"),
         timezone: user_row.get("timezone"),
         created_at: user_row.get("created_at"),
@@ -398,7 +398,7 @@ pub async fn login_with_account_number(
          stripe_subscription_id, plan_expires_at, is_public, is_admin, bio,
          website, profile_show_languages, profile_show_projects,
          profile_show_activity, profile_show_plugins, profile_show_streak,
-         available_for_hire, country, timezone, created_at, updated_at
+         available_for_hire, show_in_leaderboard, country, timezone, created_at, updated_at
          FROM users WHERE account_number = $1"
     )
     .bind(account_number)
@@ -443,7 +443,7 @@ pub async fn login_with_account_number(
         profile_show_plugins: user_row.get("profile_show_plugins"),
         profile_show_streak: user_row.get("profile_show_streak"),
         available_for_hire: user_row.get("available_for_hire"),
-        show_in_leaderboard: user_row.get("show_in_leaderboard"),
+        show_in_leaderboard: user_row.try_get("show_in_leaderboard").unwrap_or(true),
         country: user_row.get("country"),
         timezone: user_row.get("timezone"),
         created_at: user_row.get("created_at"),

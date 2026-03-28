@@ -224,6 +224,7 @@ pub async fn get_dashboard_manifests(
         name: String,
         display_name: String,
         icon: Option<String>,
+        plugin_type: Option<String>,
         widget_type: Option<String>,
         api_endpoint: Option<String>,
         version: String,
@@ -233,7 +234,9 @@ pub async fn get_dashboard_manifests(
     }
 
     let store_panels: Vec<Value> = sqlx::query_as::<_, InstalledPanelRow>(
-        r#"SELECT p.id, p.name, p.display_name, p.icon, p.widget_type, p.api_endpoint,
+        r#"SELECT p.id, p.name, p.display_name, p.icon,
+                  p.plugin_type,
+                  p.widget_type, p.api_endpoint,
                   p.version, p.script, i.accepted_version, i.accepted_script
            FROM plugin_store p
            JOIN installed_plugins i ON p.id = i.plugin_id
@@ -253,7 +256,8 @@ pub async fn get_dashboard_manifests(
         "panel": p.name,
         "title": p.display_name,
         "icon": p.icon.unwrap_or_else(|| "🔌".to_string()),
-        "widget_type": p.widget_type.unwrap_or_else(|| "counter".to_string()),
+        "plugin_type": p.plugin_type.unwrap_or_else(|| "widget".to_string()),
+        "widget_type": p.widget_type,
         "api_endpoint": p.api_endpoint,
         "plugin_id": p.id,
         "version": p.version,

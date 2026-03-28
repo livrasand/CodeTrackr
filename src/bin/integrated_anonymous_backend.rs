@@ -589,10 +589,10 @@ async fn serve_index() -> Response {
             const statusDiv = document.getElementById('authStatus');
             if (currentToken) {
                 statusDiv.className = 'status authenticated';
-                statusDiv.innerHTML = '<strong>Status:</strong> Authenticated ✅';
+                statusDiv.innerHTML = '<strong>Status:</strong> Authenticated';
             } else {
                 statusDiv.className = 'status unauthenticated';
-                statusDiv.innerHTML = '<strong>Status:</strong> Not authenticated ❌';
+                statusDiv.innerHTML = '<strong>Status:</strong> Not authenticated';
             }
         }
 

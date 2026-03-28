@@ -637,18 +637,18 @@ async fn serve_index() -> Response {
 </head>
 <body>
     <div class="container">
-        <h1>🦊 CodeTrackr - Production Anonymous Login</h1>
+        <h1>CodeTrackr - Production Anonymous Login</h1>
         
         <div class="feature-list">
-            <h3>🚀 Production Features:</h3>
+            <h3>Production Features:</h3>
             <ul>
-                <li>✅ Real JWT tokens with 24h expiry</li>
-                <li>✅ Database persistence (PostgreSQL)</li>
-                <li>✅ Real refresh token rotation service</li>
-                <li>✅ Account number verification</li>
-                <li>✅ Complete frontend integration</li>
-                <li>✅ 1000+ username combinations</li>
-                <li>✅ Security monitoring & device binding</li>
+                <li>Real JWT tokens with 24h expiry</li>
+                <li>Database persistence (PostgreSQL)</li>
+                <li>Real refresh token rotation service</li>
+                <li>Account number verification</li>
+                <li>Complete frontend integration</li>
+                <li>1000+ username combinations</li>
+                <li>Security monitoring & device binding</li>
             </ul>
         </div>
         
@@ -805,10 +805,10 @@ async fn serve_index() -> Response {
             const statusDiv = document.getElementById('authStatus');
             if (currentToken) {
                 statusDiv.className = 'status authenticated';
-                statusDiv.innerHTML = '<strong>Status:</strong> Authenticated ✅';
+                statusDiv.innerHTML = '<strong>Status:</strong> Authenticated';
             } else {
                 statusDiv.className = 'status unauthenticated';
-                statusDiv.innerHTML = '<strong>Status:</strong> Not authenticated ❌';
+                statusDiv.innerHTML = '<strong>Status:</strong> Not authenticated';
             }
         }
 

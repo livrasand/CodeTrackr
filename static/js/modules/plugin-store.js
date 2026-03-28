@@ -515,79 +515,114 @@ function closePublishModal() {
 }
 
 async function submitPublishPlugin() {
-  const token = localStorage.getItem('ct_token');
-  if (!token) {
-    const errorEl = document.getElementById('pub-error');
-    errorEl.textContent = 'Debes iniciar sesión para publicar plugins.';
-    errorEl.style.display = 'block';
-    return;
-  }
-  
-  const name = document.getElementById('pub-name').value.trim();
+  const errorEl = document.getElementById('pub-error');
+  errorEl.style.display = 'none';
+
+  const name = document.getElementById('pub-name').value.trim().toLowerCase();
   const displayName = document.getElementById('pub-display-name').value.trim();
-  const description = document.getElementById('pub-description').value.trim();
-  const version = document.getElementById('pub-version').value.trim();
-  const icon = document.getElementById('pub-icon').value.trim();
-  const repo = document.getElementById('pub-repo').value.trim();
-  const pluginType = document.getElementById('pub-plugin-type').value;
-  const widgetType = document.getElementById('pub-widget-type').value;
-  const script = document.getElementById('pub-script').value.trim();
-  
-  // Validaciones básicas
-  if (!name || !displayName || !script) {
-    const errorEl = document.getElementById('pub-error');
-    errorEl.textContent = 'Nombre, display name y script son obligatorios.';
+  const description = document.getElementById('pub-description').value.trim() || null;
+  const version = document.getElementById('pub-version').value.trim() || null;
+  const icon = document.getElementById('pub-icon').value.trim() || null;
+  const repo = document.getElementById('pub-repo').value.trim() || null;
+  const widgetType = document.getElementById('pub-widget-type')?.value || null;
+  const script = document.getElementById('pub-script').value.trim() || null;
+
+  if (!name || !displayName) {
+    errorEl.textContent = 'Nombre y display name son obligatorios.';
     errorEl.style.display = 'block';
     return;
   }
-  
-  // Detectar acceso a red
+  if (!/^[a-z0-9-]+$/.test(name)) {
+    errorEl.textContent = 'El nombre debe ser kebab-case (solo letras minúsculas, números y guiones).';
+    errorEl.style.display = 'block';
+    return;
+  }
+  if (!script) {
+    errorEl.textContent = 'El script es obligatorio.';
+    errorEl.style.display = 'block';
+    return;
+  }
+
   const hasExternalAccess = detectExternalNetworkAccess(script);
-  
+
   const btn = document.getElementById('btn-submit-publish');
   const originalText = btn.textContent;
   btn.textContent = 'Publicando...';
   btn.disabled = true;
-  
+
   try {
-    const response = await fetch('/api/v1/store/publish', {
+    const pluginType = document.getElementById('pub-plugin-type')?.value || 'widget';
+    await api('/store/publish', {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${token}`
-      },
       body: JSON.stringify({
         name,
         display_name: displayName,
         description,
         version,
         icon,
-        repository_url: repo,
+        repository: repo,
         plugin_type: pluginType,
         widget_type: widgetType,
         script,
         has_external_access: hasExternalAccess
       })
     });
-    
-    if (!response.ok) {
-      const error = await response.json();
-      throw new Error(error.error || 'Error al publicar plugin');
-    }
-    
+
     btn.textContent = '¡Publicado!';
     setTimeout(() => {
       closePublishModal();
-      loadPluginStore(); // Recargar la tienda
+      loadPluginStore();
     }, 1500);
-    
+
   } catch (error) {
     console.error('Error publicando plugin:', error);
-    const errorEl = document.getElementById('pub-error');
     errorEl.textContent = error.message || 'Error al publicar plugin';
     errorEl.style.display = 'block';
     btn.textContent = originalText;
     btn.disabled = false;
+  }
+}
+
+let _deletePluginId = null;
+let _deletePluginBtn = null;
+
+export function authorDeletePlugin(pluginId, btn) {
+  _deletePluginId = pluginId;
+  _deletePluginBtn = btn || null;
+
+  const nameEl = document.getElementById('delete-plugin-name');
+  if (nameEl) {
+    const card = btn ? btn.closest('[data-plugin-id]') : null;
+    const nameInCard = card ? card.querySelector('h3') : null;
+    nameEl.textContent = nameInCard ? nameInCard.textContent.trim() : pluginId;
+  }
+
+  const modal = document.getElementById('modal-delete-plugin');
+  if (modal) modal.style.display = 'flex';
+}
+
+export function closeDeletePluginModal() {
+  const modal = document.getElementById('modal-delete-plugin');
+  if (modal) modal.style.display = 'none';
+  _deletePluginId = null;
+  _deletePluginBtn = null;
+}
+
+export async function confirmDeletePlugin() {
+  if (!_deletePluginId) return;
+  const btn = document.getElementById('btn-confirm-delete-plugin');
+  if (btn) { btn.disabled = true; btn.textContent = 'Deleting…'; }
+
+  try {
+    await api(`/store/my/${_deletePluginId}`, { method: 'DELETE' });
+    closeDeletePluginModal();
+    const { showToast } = await import('./ui.js');
+    showToast('Plugin deleted.', [], 3000);
+    await loadPluginStore();
+  } catch (e) {
+    const { showToast } = await import('./ui.js');
+    showToast('Failed to delete: ' + e.message, [], 4000, 'danger');
+    if (btn) { btn.disabled = false; btn.textContent = 'Delete'; }
   }
 }
 
@@ -605,3 +640,6 @@ window.submitDetailReview = submitDetailReview;
 window.submitScreenshot = submitScreenshot;
 window.openPluginCodeModal = openPluginCodeModal;
 window.closePluginCodeModal = closePluginCodeModal;
+window.authorDeletePlugin = authorDeletePlugin;
+window.closeDeletePluginModal = closeDeletePluginModal;
+window.confirmDeletePlugin = confirmDeletePlugin;

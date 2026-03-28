@@ -89,7 +89,6 @@ pub async fn execute_lifecycle_hooks(
 ///   }
 /// };
 /// ```
-#[allow(dead_code)]
 pub async fn rpc_call(
     AuthenticatedUser(user): AuthenticatedUser,
     State(state): State<AppState>,

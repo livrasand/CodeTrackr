@@ -45,28 +45,22 @@ export function clearCssVars() {
 
 // Load & apply saved theme on page load
 export async function applyActiveTheme() {
+  // Apply localStorage immediately to avoid flash before API responds
+  try {
+    const saved = localStorage.getItem('ct_theme_vars');
+    if (saved) applyCssVars(JSON.parse(saved));
+  } catch (_) {}
+
   const token = getCurrentToken();
-  if (!token) {
-    // Try localStorage fallback for guests
-    try {
-      const saved = localStorage.getItem('ct_theme_vars');
-      if (saved) applyCssVars(JSON.parse(saved));
-    } catch (_) {}
-    return;
-  }
+  if (!token) return;
+
   try {
     const data = await fetchActiveTheme();
     // Merge: base theme variables first, then user custom_vars on top
     const merged = Object.assign({}, data.variables || {}, data.custom_vars || {});
     applyCssVars(merged);
     localStorage.setItem('ct_theme_vars', JSON.stringify(merged));
-  } catch (_) {
-    // Silently fall back to localStorage
-    try {
-      const saved = localStorage.getItem('ct_theme_vars');
-      if (saved) applyCssVars(JSON.parse(saved));
-    } catch (_2) {}
-  }
+  } catch (_) {}
 }
 
 // Store tab switching (Plugins ↔ Themes)
@@ -150,6 +144,24 @@ function _renderThemeStore(themes) {
     return;
   }
   grid.innerHTML = themes.map(t => _renderThemeCard(t)).join('');
+
+  grid.querySelectorAll('.theme-card').forEach(card => {
+    const themeId = card.dataset.themeId;
+    const variables = JSON.parse(decodeURIComponent(card.dataset.vars || '%7B%7D'));
+    const customCss = JSON.parse(decodeURIComponent(card.dataset.css || 'null'));
+
+    const previewBtn = card.querySelector('.theme-btn-preview');
+    if (previewBtn) previewBtn.addEventListener('click', () => previewTheme(variables));
+
+    const activateBtn = card.querySelector('.theme-btn-activate');
+    if (activateBtn) activateBtn.addEventListener('click', () => activateTheme(themeId, variables, customCss));
+
+    const uninstallBtn = card.querySelector('.theme-btn-uninstall');
+    if (uninstallBtn) uninstallBtn.addEventListener('click', () => uninstallTheme(themeId, uninstallBtn));
+
+    const installBtn = card.querySelector('.theme-btn-install');
+    if (installBtn) installBtn.addEventListener('click', () => installTheme(themeId, installBtn));
+  });
 }
 
 export async function loadThemeStore(force = false) {
@@ -245,8 +257,13 @@ function _renderThemeCard(t) {
   const swatchText = vars['--text-main'] || '#ffffff';
   const swatchAccent = vars['--accent'] || vars['--border-focus'] || '#3f3f46';
 
+  const varsEncoded = encodeURIComponent(JSON.stringify(t.variables || {}));
+  const cssEncoded = encodeURIComponent(JSON.stringify(t.custom_css || null));
   return `
-    <div class="card" style="display:flex; flex-direction:column; gap:12px; position:relative;">
+    <div class="card theme-card" style="display:flex; flex-direction:column; gap:12px; position:relative;"
+         data-theme-id="${t.id}"
+         data-vars="${varsEncoded}"
+         data-css="${cssEncoded}">
       <!-- Color preview swatch -->
       <div style="height:48px; border-radius:var(--radius-sm); overflow:hidden; display:grid; grid-template-columns:repeat(4,1fr); border:1px solid var(--border);">
         <div style="background:${swatchBg};"></div>
@@ -261,14 +278,14 @@ function _renderThemeCard(t) {
           ${isActive ? `<span style="font-size:10px; color:var(--text-dark);" class="key-hint">active</span>` : ''}
         </div>
         ${t.description ? `<p style="font-size:11px; color:var(--text-dark); margin:0; line-height:1.4;">${t.description}</p>` : ''}
-        <div style="font-size:10px; color:var(--text-dark); margin-top:4px; font-family:var(--font-mono);">by @${t.author_username} · ↓${t.install_count}</div>
+        <div style="font-size:10px; color:var(--text-dark); margin-top:4px; font-family:var(--font-mono);">by <span onclick="openPublicProfile('${t.author_username}')" style="cursor:pointer; text-decoration:underline;">@${t.author_username}</span> · ↓${t.install_count}</div>
       </div>
       <div style="display:flex; gap:6px; flex-wrap:wrap; margin-top:auto;">
-        <button class="btn" style="font-size:11px; padding:3px 10px;" onclick="previewTheme(${JSON.stringify(t.variables||{})})">Preview</button>
+        <button class="btn theme-btn-preview" style="font-size:11px; padding:3px 10px;">Preview</button>
         ${installed
-          ? `<button class="btn" style="font-size:11px; padding:3px 10px;" onclick="activateTheme('${t.id}',${JSON.stringify(t.variables)},${JSON.stringify(t.custom_css||null)})">${isActive ? '✓ Active' : 'Apply'}</button>
-             <button class="btn" style="font-size:11px; padding:3px 10px; color:var(--text-dark);" onclick="uninstallTheme('${t.id}',this)">Uninstall</button>`
-          : `<button class="btn" style="font-size:11px; padding:3px 10px;" onclick="installTheme('${t.id}',this)">Install</button>`
+          ? `<button class="btn theme-btn-activate" style="font-size:11px; padding:3px 10px;">${isActive ? '✓ Active' : 'Apply'}</button>
+             <button class="btn theme-btn-uninstall" style="font-size:11px; padding:3px 10px; color:var(--text-dark);">Uninstall</button>`
+          : `<button class="btn theme-btn-install" style="font-size:11px; padding:3px 10px;">Install</button>`
         }
       </div>
     </div>`;
@@ -330,7 +347,7 @@ export async function activateTheme(themeId, variables, customCss) {
 export function previewTheme(variables) {
   clearCssVars();
   applyCssVars(variables || {});
-  showToast('Previewing theme — click Apply to keep, Reset to revert.', [], 3000);
+  showToast('Previewing theme — click Save to keep, Reset to revert.', [], 5000);
 }
 
 // Theme editor functionality
@@ -538,7 +555,7 @@ export async function submitPublishTheme() {
   try {
     await api('/themes/publish', {
       method: 'POST',
-      body: JSON.stringify({ name, display_name: displayName, description, version, icon, variables }),
+      body: JSON.stringify({ name, display_name: displayName, description: description || null, version, icon, variables }),
     });
     showToast('Theme published!', [], 3000);
     closePublishThemeModal();

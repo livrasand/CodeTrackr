@@ -24,7 +24,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   await applyActiveTheme();
   
   if (window.location.pathname === '/' || window.location.pathname === '') {
-    await initLandingPage();
+    try { await initLandingPage(); } catch (_) {}
   }
 });
 

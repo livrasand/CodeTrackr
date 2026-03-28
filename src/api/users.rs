@@ -117,6 +117,26 @@ pub async fn get_public_profile(
         }).collect()
     } else { vec![] };
 
+    let themes: Vec<serde_json::Value> = if user.profile_show_plugins {
+        sqlx::query(
+            r#"SELECT id, name, display_name, description, version, icon, install_count
+               FROM theme_store WHERE author_id = $1 AND is_published = true AND is_banned = false
+               ORDER BY install_count DESC LIMIT 10"#
+        ).bind(user.id).fetch_all(&state.db.pool).await.unwrap_or_default()
+        .iter().map(|r| {
+            use sqlx::Row;
+            json!({
+                "id": r.get::<Uuid,_>("id"),
+                "name": r.get::<String,_>("name"),
+                "display_name": r.get::<String,_>("display_name"),
+                "description": r.get::<Option<String>,_>("description"),
+                "version": r.get::<String,_>("version"),
+                "icon": r.get::<Option<String>,_>("icon"),
+                "install_count": r.get::<i32,_>("install_count"),
+            })
+        }).collect()
+    } else { vec![] };
+
     let plugins: Vec<serde_json::Value> = if user.profile_show_plugins {
         sqlx::query(
             r#"SELECT id, name, display_name, description, version, icon,
@@ -162,6 +182,7 @@ pub async fn get_public_profile(
         "languages": languages,
         "projects": projects,
         "plugins": plugins,
+        "themes": themes,
     })))
 }
 

@@ -318,9 +318,10 @@ fn api_routes(state: AppState, plugin_router: Router<AppState>) -> Router<AppSta
     };
 
     // Rate limiting general con IP real
+    let burst = if cfg!(debug_assertions) { 500 } else { 100 };
     let governor_conf = GovernorConfigBuilder::default()
         .per_second(500)
-        .burst_size(100)
+        .burst_size(burst)
         .key_extractor(RealIpKeyExtractor)
         .finish()
         .unwrap();
@@ -376,7 +377,7 @@ fn api_routes(state: AppState, plugin_router: Router<AppState>) -> Router<AppSta
         // Plugin editor sandbox
         .route("/cteditor/run", post(api::cteditor::run_plugin))
         // Plugin RPC — user-defined endpoints inside store plugin scripts
-        // .route("/plugins/:name/rpc/:handler", post(api::plugin_rpc::rpc_call))  // TODO: Fix plugin RPC
+        .route("/plugins/:name/rpc/:handler", post(api::plugin_rpc::rpc_call))
         // WebSocket ticket (single-use, TTL 30s — evita exponer JWT en query string)
         .route("/ws-ticket", post(realtime::ws_handler::create_ws_ticket))
         // Health

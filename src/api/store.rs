@@ -44,6 +44,7 @@ pub struct PublishPluginRequest {
     pub version: Option<String>,
     pub repository: Option<String>,
     pub icon: Option<String>,
+    pub plugin_type: Option<String>,
     pub widget_type: Option<String>,
     pub api_endpoint: Option<String>,
     pub script: Option<String>,
@@ -119,6 +120,7 @@ pub async fn publish_plugin(
 ) -> ApiResult {
     let version = body.version.unwrap_or_else(|| "0.1.0".to_string());
     let icon = body.icon.unwrap_or_else(|| "🔌".to_string());
+    let plugin_type = body.plugin_type.unwrap_or_else(|| "widget".to_string());
     let widget_type = body.widget_type.unwrap_or_else(|| "counter".to_string());
 
     if let Some(ref desc) = body.description {
@@ -129,14 +131,15 @@ pub async fn publish_plugin(
 
     let plugin = sqlx::query_as::<_, StorePlugin>(
         r#"INSERT INTO plugin_store
-               (author_id, name, display_name, description, version, repository, icon, widget_type, api_endpoint, script, settings_schema, has_external_access, is_published)
-           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, true)
+               (author_id, name, display_name, description, version, repository, icon, plugin_type, widget_type, api_endpoint, script, settings_schema, has_external_access, is_published)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, true)
            ON CONFLICT (name) DO UPDATE SET
              display_name   = EXCLUDED.display_name,
              description    = EXCLUDED.description,
              version        = EXCLUDED.version,
              repository     = EXCLUDED.repository,
              icon           = EXCLUDED.icon,
+             plugin_type    = EXCLUDED.plugin_type,
              widget_type    = EXCLUDED.widget_type,
              api_endpoint   = EXCLUDED.api_endpoint,
              script         = EXCLUDED.script,
@@ -159,6 +162,7 @@ pub async fn publish_plugin(
     .bind(&version)
     .bind(&body.repository)
     .bind(&icon)
+    .bind(&plugin_type)
     .bind(&widget_type)
     .bind(&body.api_endpoint)
     .bind(&body.script)

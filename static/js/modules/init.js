@@ -68,6 +68,8 @@ export async function initLandingPage() {
     if (publishBtn) publishBtn.style.display = 'inline-flex';
     const editorBtn = document.getElementById('btn-open-editor');
     if (editorBtn) editorBtn.style.display = 'inline-flex';
+    const extensionsSection = document.getElementById('extensions');
+    if (extensionsSection) extensionsSection.style.display = 'none';
   }
   loadPluginStore();
 

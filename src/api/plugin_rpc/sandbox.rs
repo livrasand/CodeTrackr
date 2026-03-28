@@ -68,7 +68,8 @@ fn setup_quickjs_context(
                     },
                     Err(e) => {
                         tracing::warn!("Plugin db.query error: {e}");
-                        let _ = tx.send(Err(format!("{{\"__error\": \"{}\"}}", e)));
+                        let err_json = serde_json::json!({"__error": e}).to_string();
+                        let _ = tx.send(Err(err_json));
                     }
                 }
             });
@@ -235,7 +236,6 @@ fn setup_quickjs_context(
 
 /// Ejecuta el handler del plugin dentro de un sandbox QuickJS embebido.
 /// Usa oneshot channels para sincronización real entre QuickJS y operaciones async.
-#[allow(dead_code)]
 pub fn run_rpc_in_quickjs(
     plugin_script: &str,
     handler: &str,
@@ -419,27 +419,6 @@ function error() {{ __push_log('[ERROR] ' + Array.prototype.slice.call(arguments
 
 const req = {req_json};
 
-// ── Plugin script ─────────────────────────────────────────────────────────────
-{plugin_script}
-
-// ── Dispatch ──────────────────────────────────────────────────────────────────
-(function() {{
-  if (typeof endpoints === 'undefined' || typeof endpoints["{handler}"] !== 'function') {{
-    __set_error("Handler '{handler}' not found in plugin endpoints");
-    return;
-  }}
-  var p = endpoints["{handler}"](ctx, req);
-  if (p && typeof p.then === 'function') {{
-    p.then(function(result) {{
-      __set_result(JSON.stringify(result != null ? result : {{ ok: true }}));
-    }}).catch(function(e) {{
-      __set_error(e && e.message ? e.message : String(e));
-    }});
-  }} else {{
-    __set_result(JSON.stringify(p != null ? p : {{ ok: true }}));
-  }}
-}})();
-
 // ── Context con DB y Redis reales (via Rust bridge) ──────────────────────────
 const ctx = {{
   user_id: __user_id(),
@@ -471,6 +450,27 @@ const ctx = {{
   }},
   config: {{ base_url: "https://codetrackr.leapcell.app" }}
 }};
+
+// ── Plugin script ─────────────────────────────────────────────────────────────
+{plugin_script}
+
+// ── Dispatch ──────────────────────────────────────────────────────────────────
+(function() {{
+  if (typeof endpoints === 'undefined' || typeof endpoints["{handler}"] !== 'function') {{
+    __set_error("Handler '{handler}' not found in plugin endpoints");
+    return;
+  }}
+  var p = endpoints["{handler}"](ctx, req);
+  if (p && typeof p.then === 'function') {{
+    p.then(function(result) {{
+      __set_result(JSON.stringify(result != null ? result : {{ ok: true }}));
+    }}).catch(function(e) {{
+      __set_error(e && e.message ? e.message : String(e));
+    }});
+  }} else {{
+    __set_result(JSON.stringify(p != null ? p : {{ ok: true }}));
+  }}
+}})();
 "#,
         req_json = req_json,
         plugin_script = plugin_script,

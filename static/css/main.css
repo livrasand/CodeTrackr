@@ -724,3 +724,41 @@ pre {
     gap: 12px;
   }
 }
+
+/* Daily Activity Chart */
+.chart-bar {
+  flex: 1;
+  background: var(--accent);
+  border-radius: var(--radius-sm) var(--radius-sm) 0 0;
+  min-height: 4px;
+  position: relative;
+  cursor: pointer;
+  opacity: 0.7;
+  transition: opacity var(--transition);
+}
+
+.chart-bar:hover {
+  opacity: 1;
+}
+
+.chart-bar-tooltip {
+  display: none;
+  position: absolute;
+  bottom: calc(100% + 6px);
+  left: 50%;
+  transform: translateX(-50%);
+  background: var(--bg-card);
+  border: 1px solid var(--border-focus);
+  border-radius: var(--radius-sm);
+  padding: 4px 8px;
+  font-size: 11px;
+  color: var(--text-main);
+  white-space: nowrap;
+  z-index: 10;
+  pointer-events: none;
+  line-height: 1.6;
+}
+
+.chart-bar:hover .chart-bar-tooltip {
+  display: block;
+}
