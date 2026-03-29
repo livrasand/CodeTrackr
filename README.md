@@ -18,9 +18,16 @@ It also has customizable CSS themes, authentication via GitHub/GitLab/Anonymous 
 
 | <img src="static/images/ides/vs-code-128.png" width="64" alt="VS Code"><br><strong>VS Code</strong> | <img src="static/images/ides/cursor-128.png" width="64" alt="Cursor"><br><strong>Cursor</strong> | <img src="static/images/ides/windsurf-128.png" width="64" alt="Windsurf"><br><strong>Windsurf</strong> | <img src="static/images/ides/codium_cnl.svg" width="64" alt="VSCodium"><br><strong>VSCodium</strong> |
 | --- | --- | --- | --- |
-| <img src="static/images/ides/codesandbox_12998_logo_1631778366_kenkz.png.avif" width="64" alt="CodeSandbox"><br><strong>CodeSandbox</strong> | <img src="static/images/ides/eclipse-128.png" width="64" alt="Eclipse"><br><strong>Eclipse</strong> | <img src="static/images/ides/117817022.png" width="64" alt="Neovim"><br><strong>Neovim</strong> | <img src="static/images/ides/28635252.jpeg" width="64" alt="IntelliJ IDEA"><br><strong>StackBlitz</strong> |
+| <img src="static/images/ides/codesandbox_12998_logo_1631778366_kenkz.png.avif" width="64" alt="CodeSandbox"><br><strong>CodeSandbox</strong> | <img src="static/images/ides/eclipse-128.png" width="64" alt="Eclipse"><br><strong>Eclipse</strong> | <img src="static/images/ides/117817022.png" width="64" alt="Gitpod"><br><strong>Gitpod</strong> | <img src="static/images/ides/28635252.jpeg" width="64" alt="StackBlitz"><br><strong>StackBlitz</strong> |
+| <img src="static/images/ides/antigravity-128.png" width="64" alt="Antigravity"><br><strong>Antigravity</strong> | <img src="static/images/ides/azure-data-studio-128.png" width="64" alt="Azure Data Studio"><br><strong>Azure Data Studio</strong> | <img src="static/images/ides/opencode-128.png" width="64" alt="OpenCode"><br><strong>OpenCode</strong> | <img src="static/images/ides/trae-128.png" width="64" alt="Trae"><br><strong>Trae</strong> |
 
 All product names, logos, and brands are property of their respective owners.
+
+## Official Extensions
+
+These are the official extensions recognized and maintained by the project:
+
+- **VS Code:** [livrasand/codetrackr-vscode](https://github.com/livrasand/codetrackr-vscode) — Track your coding activity in Visual Studio Code.
 
 ---
 
