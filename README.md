@@ -28,6 +28,7 @@ All product names, logos, and brands are property of their respective owners.
 These are the official extensions recognized and maintained by the project:
 
 - **VS Code:** [livrasand/codetrackr-vscode](https://github.com/livrasand/codetrackr-vscode) — Track your coding activity in Visual Studio Code.
+- **Unity:** [livrasand/codetrackr-unity](https://github.com/livrasand/codetrackr-unity) - Track your development time in Unity.
 
 ---
 
