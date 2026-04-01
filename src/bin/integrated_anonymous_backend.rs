@@ -4,7 +4,6 @@ use axum::{
     extract::State,
     http::{StatusCode, header},
     response::{Json, Response},
-    middleware,
 };
 use serde_json::{json, Value};
 use std::net::SocketAddr;
@@ -15,34 +14,10 @@ use sqlx::Row;
 use chrono::{Utc, Duration};
 use jsonwebtoken::{encode, Header, EncodingKey};
 
-// Import the real refresh token service
-use crate::models::{CreateRefreshTokenRequest, RefreshTokenResponse};
-use crate::services::refresh_tokens::RefreshTokenService;
-
 #[derive(Clone)]
 struct AppState {
     db_pool: sqlx::PgPool,
     jwt_secret: String,
-}
-
-#[derive(Clone)]
-struct Config {
-    jwt_secret: String,
-}
-
-#[derive(Clone)]
-struct FullAppState {
-    db: crate::db::Database,
-    config: Config,
-}
-
-impl FullAppState {
-    fn from_simple(state: AppState) -> Self {
-        Self {
-            db: crate::db::Database { pool: state.db_pool },
-            config: Config { jwt_secret: state.jwt_secret },
-        }
-    }
 }
 
 /// Generate anonymous username (random adjective + animal combination)
@@ -331,36 +306,12 @@ pub async fn verify_account_number(
     })))
 }
 
-/// Create refresh token using real service
-async fn create_real_refresh_token(
-    user_id: Uuid,
-    account_number: &str,
-    state: &FullAppState,
-) -> Result<RefreshTokenResponse, Box<dyn std::error::Error>> {
-    let refresh_request = CreateRefreshTokenRequest {
-        device_id: format!("anonymous-{}", account_number),
-        device_info: Some(json!({
-            "type": "anonymous",
-            "account_number": account_number,
-            "created_at": Utc::now().to_rfc3339()
-        })),
-    };
-    
-    RefreshTokenService::create_token(
-        user_id,
-        refresh_request,
-        None, // IP address
-        None, // User agent
-        state,
-    ).await
-}
-
-/// Refresh token endpoint using real service
+/// Refresh token endpoint
 pub async fn refresh_token(
     State(state): State<AppState>,
     Json(payload): Json<Value>,
 ) -> Result<Response, (StatusCode, Json<Value>)> {
-    let refresh_token = payload.get("refresh_token")
+    let old_refresh_token = payload.get("refresh_token")
         .and_then(|v| v.as_str())
         .ok_or_else(|| {
             (
@@ -369,42 +320,59 @@ pub async fn refresh_token(
             )
         })?;
 
-    let full_state = FullAppState::from_simple(state);
-    
-    // Use real refresh token service
-    match RefreshTokenService::rotate_token(refresh_token, None, None, &full_state).await {
-        Ok(token_response) => {
-            // Create new access token for the user
-            let access_token = create_anonymous_jwt(&token_response.device_id, &full_state.config.jwt_secret)
-                .map_err(|e| {
-                    tracing::error!("Access token creation failed: {}", e);
-                    (
-                        StatusCode::INTERNAL_SERVER_ERROR,
-                        Json(json!({"error": "Authentication failed"})),
-                    )
-                })?;
-
-            let response = Json(json!({
-                "access_token": access_token,
-                "refresh_token": token_response.refresh_token,
-                "device_id": token_response.device_id,
-                "expires_at": token_response.expires_at
-            }));
-
-            Ok(Response::builder()
-                .status(StatusCode::OK)
-                .header(header::CONTENT_TYPE, "application/json")
-                .body(response.to_string().into())
-                .unwrap())
-        }
-        Err(e) => {
-            tracing::warn!("Refresh token rotation failed: {}", e);
-            Err((
-                StatusCode::UNAUTHORIZED,
-                Json(json!({"error": e})),
-            ))
-        }
+    // Extract user_id from mock refresh token format: "mock_refresh_{user_id}_{timestamp}"
+    let parts: Vec<&str> = old_refresh_token.splitn(4, '_').collect();
+    if parts.len() < 4 || parts[0] != "mock" || parts[1] != "refresh" {
+        return Err((
+            StatusCode::UNAUTHORIZED,
+            Json(json!({"error": "Invalid refresh token"})),
+        ));
     }
+    let user_id = parts[2];
+
+    // Verify user still exists
+    let exists: bool = sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM users WHERE id = $1::uuid AND is_anonymous = true)")
+        .bind(user_id)
+        .fetch_one(&state.db_pool)
+        .await
+        .map_err(|e| {
+            tracing::error!("DB error verifying user: {}", e);
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(json!({"error": "Database error"})),
+            )
+        })?;
+
+    if !exists {
+        return Err((
+            StatusCode::UNAUTHORIZED,
+            Json(json!({"error": "Invalid refresh token"})),
+        ));
+    }
+
+    let access_token = create_anonymous_jwt(user_id, &state.jwt_secret)
+        .map_err(|e| {
+            tracing::error!("Access token creation failed: {}", e);
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(json!({"error": "Authentication failed"})),
+            )
+        })?;
+
+    let new_refresh_token = format!("mock_refresh_{}_{}", user_id, Utc::now().timestamp());
+    let expires_at = (Utc::now() + Duration::hours(24)).to_rfc3339();
+
+    let response = Json(json!({
+        "access_token": access_token,
+        "refresh_token": new_refresh_token,
+        "expires_at": expires_at
+    }));
+
+    Ok(Response::builder()
+        .status(StatusCode::OK)
+        .header(header::CONTENT_TYPE, "application/json")
+        .body(response.to_string().into())
+        .unwrap())
 }
 
 /// Serve the frontend
@@ -644,8 +612,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .with_state(state);
 
     let addr = SocketAddr::from(([127, 0, 0, 1], 8080));
-    println!("🚀 CodeTrackr Integrated Anonymous Login Backend running on http://{}", addr);
-    println!("📝 Features:");
+    println!("CodeTrackr Integrated Anonymous Login Backend running on http://{}", addr);
+    println!("Features:");
     println!("   • Real JWT tokens with 24h expiry");
     println!("   • Database persistence (PostgreSQL)");
     println!("   • Refresh token support");
