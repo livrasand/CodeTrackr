@@ -229,7 +229,10 @@ async fn main() -> anyhow::Result<()> {
     // realtime::start_redis_subscriber(redis_url.clone()).await;
 
     let frontend_url = state.config.frontend_url.clone();
-    let allow_null_origin = frontend_url.starts_with("http://localhost")
+    let allow_null_origin = std::env::var("ALLOW_NULL_ORIGIN")
+        .map(|v| v == "true" || v == "1")
+        .unwrap_or(false)
+        || frontend_url.starts_with("http://localhost")
         || frontend_url.starts_with("https://localhost")
         || frontend_url.starts_with("http://127.0.0.1")
         || frontend_url.starts_with("https://127.0.0.1");
@@ -243,7 +246,7 @@ async fn main() -> anyhow::Result<()> {
                     || s.starts_with("http://127.0.0.1:")
                     || s.starts_with("https://127.0.0.1:")
                     || s == frontend_url
-                    // Permitir origen "null" en entornos locales (file:// o sandboxed)
+                    // Permitir origen "null" (file:// o sandboxed) si está habilitado
                     || (allow_null_origin && s == "null")
             },
         ))

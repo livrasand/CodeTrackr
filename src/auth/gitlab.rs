@@ -75,7 +75,7 @@ pub async fn gitlab_callback(
     let callback_url = format!("{}/auth/gitlab/callback", base_url);
 
     let client = reqwest::Client::new();
-    let token_res: GitlabTokenResponse = client
+    let token_http_res = client
         .post("https://gitlab.com/oauth/token")
         .form(&[
             ("client_id", state.config.gitlab_client_id.as_str()),
@@ -86,7 +86,16 @@ pub async fn gitlab_callback(
         ])
         .send()
         .await
-        .map_err(|e| (StatusCode::BAD_GATEWAY, Json(json!({"error": e.to_string()}))))?
+        .map_err(|e| (StatusCode::BAD_GATEWAY, Json(json!({"error": e.to_string()}))))?;
+
+    if !token_http_res.status().is_success() {
+        let status = token_http_res.status();
+        let body = token_http_res.text().await.unwrap_or_default();
+        tracing::error!("GitLab token exchange returned {}: {}", status, body);
+        return Err((StatusCode::UNAUTHORIZED, Json(json!({"error": "GitLab OAuth failed"}))));
+    }
+
+    let token_res: GitlabTokenResponse = token_http_res
         .json()
         .await
         .map_err(|e| (StatusCode::BAD_GATEWAY, Json(json!({"error": e.to_string()}))))?;
@@ -95,15 +104,24 @@ pub async fn gitlab_callback(
         (StatusCode::UNAUTHORIZED, Json(json!({"error": "GitLab OAuth failed"})))
     })?;
 
-    let gl_user: GitlabUser = client
+    let gl_user_res = client
         .get("https://gitlab.com/api/v4/user")
         .header("Authorization", format!("Bearer {}", access_token))
         .send()
         .await
-        .map_err(|e| (StatusCode::BAD_GATEWAY, Json(json!({"error": e.to_string()}))))?
+        .map_err(|e| (StatusCode::BAD_GATEWAY, Json(json!({"error": e.to_string()}))))?;
+
+    if !gl_user_res.status().is_success() {
+        let status = gl_user_res.status();
+        let body = gl_user_res.text().await.unwrap_or_default();
+        tracing::error!("GitLab /api/v4/user returned {}: {}", status, body);
+        return Err((StatusCode::UNAUTHORIZED, Json(json!({"error": "GitLab OAuth failed"}))));
+    }
+
+    let gl_user: GitlabUser = gl_user_res
         .json()
         .await
-        .map_err(|e| (StatusCode::BAD_GATEWAY, Json(json!({"error": e.to_string()}))))?;
+        .map_err(|e| (StatusCode::BAD_GATEWAY, Json(json!({"error": format!("error decoding GitLab user: {}", e)}))))?;
 
     let gitlab_id = gl_user.id.to_string();
 

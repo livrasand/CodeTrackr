@@ -215,17 +215,30 @@ export async function loadInstalledThemes(force = false) {
         if (bar) bar.style.display = '';
         list.innerHTML = installedData.themes.map(t => {
           const isActive = t.id === _activeThemeId;
+          const varsEncoded = encodeURIComponent(JSON.stringify(t.variables || {}));
+          const cssEncoded = encodeURIComponent(JSON.stringify(t.custom_css || null));
           return `
-            <div style="display:inline-flex; align-items:center; gap:6px; background:var(--bg-card); border:1px solid ${isActive ? 'var(--accent,var(--border-focus))' : 'var(--border)'}; border-radius:var(--radius-pill); padding:4px 10px; font-size:11px;">
+            <div style="display:inline-flex; align-items:center; gap:6px; background:var(--bg-card); border:1px solid ${isActive ? 'var(--accent,var(--border-focus))' : 'var(--border)'}; border-radius:var(--radius-pill); padding:4px 10px; font-size:11px;"
+                 data-theme-id="${t.id}" data-vars="${varsEncoded}" data-css="${cssEncoded}">
               <span>${t.icon || '🎨'}</span>
               <span style="color:var(--text-main);">${t.display_name}</span>
               ${isActive
                 ? `<span style="color:var(--text-dark);">✓ active</span>`
-                : `<button onclick="activateTheme('${t.id}',${JSON.stringify(t.variables)},${JSON.stringify(t.custom_css||null)})" style="background:none;border:none;color:var(--text-dark);cursor:pointer;font-size:11px;padding:0;">Apply</button>`
+                : `<button class="installed-bar-apply" style="background:none;border:none;color:var(--text-dark);cursor:pointer;font-size:11px;padding:0;">Apply</button>`
               }
-              <button onclick="uninstallTheme('${t.id}',this)" style="background:none;border:none;color:var(--text-dark);cursor:pointer;font-size:11px;padding:0 2px;">✕</button>
+              <button class="installed-bar-uninstall" style="background:none;border:none;color:var(--text-dark);cursor:pointer;font-size:11px;padding:0 2px;">✕</button>
             </div>`;
         }).join('');
+
+        list.querySelectorAll('[data-theme-id]').forEach(item => {
+          const themeId = item.dataset.themeId;
+          const variables = JSON.parse(decodeURIComponent(item.dataset.vars || '%7B%7D'));
+          const customCss = JSON.parse(decodeURIComponent(item.dataset.css || 'null'));
+          const applyBtn = item.querySelector('.installed-bar-apply');
+          if (applyBtn) applyBtn.addEventListener('click', () => activateTheme(themeId, variables, customCss));
+          const uninstallBtn = item.querySelector('.installed-bar-uninstall');
+          if (uninstallBtn) uninstallBtn.addEventListener('click', () => uninstallTheme(themeId, uninstallBtn));
+        });
       } else {
         if (bar) bar.style.display = 'none';
         list.innerHTML = '';

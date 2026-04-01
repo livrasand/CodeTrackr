@@ -84,6 +84,9 @@ pub async fn create_checkout_session(
         .map_err(|_| (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": "Stripe not configured"}))))?;
 
     let frontend_url = &state.config.frontend_url;
+    if !frontend_url.starts_with("http://") && !frontend_url.starts_with("https://") {
+        return Err((StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": "FRONTEND_URL must include scheme (https://...). Check server configuration."}))));
+    }
     let success_url = body.success_url.unwrap_or_else(|| format!("{}/billing/success", frontend_url));
     let cancel_url = body.cancel_url.unwrap_or_else(|| format!("{}/billing/cancel", frontend_url));
 
