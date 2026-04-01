@@ -9,6 +9,17 @@
   <link rel="icon" type="image/png" href="/static/images/logo.png" />
   <link rel="stylesheet" href="/static/css/main.css" />
   <script src="https://cdn.jsdelivr.net/npm/sortablejs@1.15.0/Sortable.min.js"></script>
+  <style>
+    .auth-dropdown-item {
+      display: block; width: 100%; text-align: left;
+      padding: 8px 14px; font-size: 13px;
+      color: var(--text-main); background: none; border: none;
+      border-bottom: 1px solid var(--border); cursor: pointer;
+      text-decoration: none; font-family: inherit;
+    }
+    .auth-dropdown-item:last-child { border-bottom: none; }
+    .auth-dropdown-item:hover { background: var(--bg-hover); }
+  </style>
 </head>
 
 <body>
@@ -305,7 +316,13 @@ X-API-Key: ct_your_key
         <div style="display:flex; align-items:center; gap:16px;">
           <a href="/plugin-store" class="nav-link" style="font-size:12px; padding:4px 12px;" >Plugin Store</a>
           <span id="dash-pro-badge" style="display:none; font-size:11px; color:var(--text-dark);" class="key-hint"><svg style="width:10px; height:10px; vertical-align:text-bottom;" fill="currentColor" viewBox="0 0 24 24"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"></path></svg> Pro</span>
-          <button id="btn-upgrade-pro" onclick="startCheckout(this)" style="display:none; font-size:12px; padding:4px 12px;cursor: pointer;" class="key-hint">★ Upgrade to Pro</button>
+          <div id="btn-upgrade-pro" style="display:none; position:relative;" class="auth-dropdown-wrap">
+            <button class="key-hint" style="font-size:12px; padding:4px 12px; cursor:pointer;" onclick="toggleAuthDropdown(this)">★ Upgrade to Pro ▾</button>
+            <div class="auth-dropdown" style="display:none; position:absolute; top:calc(100% + 6px); right:0; min-width:160px; background:var(--bg-card); border:1px solid var(--border); border-radius:var(--radius-sm); z-index:100; overflow:hidden;">
+              <button class="auth-dropdown-item" onclick="startCheckoutPlan('monthly', this)">Monthly — $2/mo</button>
+              <button class="auth-dropdown-item" onclick="startCheckoutPlan('yearly', this)">Yearly — $12/yr</button>
+            </div>
+          </div>
           <button class="btn" onclick="logout()" style="color:var(--text-dark); font-size:12px; padding:4px 12px;">Logout</button>
         </div>
       </div>
@@ -557,7 +574,14 @@ X-API-Key: ct_your_key
               <li>- 90-day history</li>
             </ul>
           </div>
-          <a href="/auth/github" class="btn" style="width:100%; justify-content:center;">Register</a>
+          <div style="position:relative; width:100%;" class="auth-dropdown-wrap">
+            <button class="btn" style="width:100%; justify-content:center;" onclick="toggleAuthDropdown(this)">Register ▾</button>
+            <div class="auth-dropdown" style="display:none; position:absolute; bottom:calc(100% + 6px); left:0; right:0; background:var(--bg-card); border:1px solid var(--border); border-radius:var(--radius-sm); z-index:100; overflow:hidden;">
+              <a href="/auth/github" class="auth-dropdown-item">Github</a>
+              <a href="/auth/gitlab" class="auth-dropdown-item">Gitlab</a>
+              <button onclick="showAnonymousAuth()" class="auth-dropdown-item">Anonymous</button>
+            </div>
+          </div>
         </div>
 
         <div class="card"
@@ -579,8 +603,14 @@ X-API-Key: ct_your_key
               <li>- Your subscription keeps CodeTrackr free, open and without selling your data</li>
             </ul>
           </div>
-            <a href="/auth/github" class="btn"
-            style="width:100%; justify-content:center; border-color:var(--border-focus);">Get Pro Cloud</a>
+            <div style="position:relative; width:100%;" class="auth-dropdown-wrap">
+              <button class="btn" style="width:100%; justify-content:center; border-color:var(--border-focus);" onclick="toggleAuthDropdown(this)">Get Pro Cloud ▾</button>
+              <div class="auth-dropdown" style="display:none; position:absolute; bottom:calc(100% + 6px); left:0; right:0; background:var(--bg-card); border:1px solid var(--border); border-radius:var(--radius-sm); z-index:100; overflow:hidden;">
+                <a href="/auth/github" class="auth-dropdown-item">Github</a>
+                <a href="/auth/gitlab" class="auth-dropdown-item">Gitlab</a>
+                <button onclick="showAnonymousAuth()" class="auth-dropdown-item">Anonymous</button>
+              </div>
+            </div>
         </div>
 
         <div class="card"
@@ -1065,6 +1095,32 @@ X-API-Key: ct_your_key
         window.location.href = '/auth/gitlab';
       } else if (key === 'a') {
         showAnonymousAuth();
+      }
+    });
+
+    // Checkout plan selector (monthly / yearly)
+    async function startCheckoutPlan(plan, btn) {
+      try {
+        const res = await fetch('/api/v1/billing/config', { headers: { 'Content-Type': 'application/json' } });
+        const config = await res.json();
+        const priceId = plan === 'yearly' ? config.price_id_yearly : config.price_id;
+        if (!priceId) { alert('Billing not configured for this plan.'); return; }
+        startCheckout(btn, priceId);
+      } catch (e) {
+        alert('Failed to start checkout: ' + e.message);
+      }
+    }
+
+    // Auth dropdown toggle
+    function toggleAuthDropdown(btn) {
+      const dropdown = btn.nextElementSibling;
+      const isOpen = dropdown.style.display === 'block';
+      document.querySelectorAll('.auth-dropdown').forEach(d => d.style.display = 'none');
+      dropdown.style.display = isOpen ? 'none' : 'block';
+    }
+    document.addEventListener('click', function(e) {
+      if (!e.target.closest('.auth-dropdown-wrap')) {
+        document.querySelectorAll('.auth-dropdown').forEach(d => d.style.display = 'none');
       }
     });
 

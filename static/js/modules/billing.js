@@ -8,7 +8,7 @@ import { api } from './api.js';
 // Global export for inline onclick handlers
 window.startCheckout = startCheckout;
 
-export async function startCheckout(button) {
+export async function startCheckout(button, priceIdOverride) {
   if (!button) return;
   
   try {
@@ -17,14 +17,15 @@ export async function startCheckout(button) {
 
     // Get billing config to fetch price ID
     const config = await api('/billing/config');
-    if (!config.price_id) {
+    const price_id = priceIdOverride || config.price_id;
+    if (!price_id) {
       throw new Error('Billing not configured');
     }
 
     // Create checkout session
     const session = await api('/billing/checkout', {
       method: 'POST',
-      body: JSON.stringify({ price_id: config.price_id })
+      body: JSON.stringify({ price_id })
     });
 
     if (session.url) {

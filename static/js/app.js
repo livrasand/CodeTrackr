@@ -12,16 +12,18 @@ import { connectWebSocket, closeWebSocket } from './modules/websocket.js';
 import { getCurrentToken } from './modules/auth.js';
 import { showLanding } from './modules/router.js';
 import { getWebSocket } from './modules/websocket.js';
+import { openPublicProfile } from './modules/profile.js';
 import './modules/billing.js'; // Import billing to register startCheckout globally
 
 // Global exports for inline onclick handlers
 window.logout = logout;
+window.openPublicProfile = openPublicProfile;
 
 // Main initialization
 document.addEventListener('DOMContentLoaded', async () => {
+  await applyActiveTheme();
   await initAuth();
   initNav();
-  await applyActiveTheme();
   
   if (window.location.pathname === '/' || window.location.pathname === '') {
     try { await initLandingPage(); } catch (_) {}

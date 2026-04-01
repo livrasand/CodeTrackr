@@ -171,7 +171,8 @@ pub async fn get_billing_status(
 pub async fn get_billing_config() -> Json<Value> {
     let publishable_key = std::env::var("STRIPE_PUBLISHABLE_KEY").unwrap_or_default();
     let price_id = std::env::var("STRIPE_PRICE_ID").unwrap_or_default();
-    Json(json!({ "publishable_key": publishable_key, "price_id": price_id }))
+    let price_id_yearly = std::env::var("STRIPE_PRICE_ID_YEARLY").unwrap_or_default();
+    Json(json!({ "publishable_key": publishable_key, "price_id": price_id, "price_id_yearly": price_id_yearly }))
 }
 
 // ── Create Portal Session (manage subscription) ───────────────────────────────

@@ -1,31 +1,30 @@
-# Multi-stage build for minimal image size
+# Multi-stage build — cargo-chef for dep caching + distroless runtime
 
-# ── Build Stage ───────────────────────────────────────────────────────────────
-FROM rust:1.75-slim AS builder
-
-RUN apt-get update && apt-get install -y \
-    pkg-config libssl-dev patch \
-    && rm -rf /var/lib/apt/lists/*
-
+# ── Chef Stage (instala cargo-chef una sola vez) ───────────────────────────────
+FROM rust:1.82-slim AS chef
+RUN apt-get update && apt-get install -y pkg-config libssl-dev patch && rm -rf /var/lib/apt/lists/*
+RUN cargo install cargo-chef --locked
 WORKDIR /app
 
-# Cache dependencies
+# ── Planner (genera recipe.json con el grafo de deps) ─────────────────────────
+FROM chef AS planner
 COPY Cargo.toml Cargo.lock ./
-RUN mkdir src && echo "fn main() {}" > src/main.rs
-RUN cargo build --release
-RUN rm -rf src
+COPY src ./src
+RUN cargo chef prepare --recipe-path recipe.json
 
-# Build application
+# ── Builder (compila deps cacheadas + binario final) ──────────────────────────
+FROM chef AS builder
+COPY --from=planner /app/recipe.json recipe.json
+# Este paso se cachea mientras Cargo.toml/Cargo.lock no cambien
+RUN cargo chef cook --release --recipe-path recipe.json
+
+COPY Cargo.toml Cargo.lock ./
 COPY src ./src
 COPY migrations ./migrations
-RUN touch src/main.rs && cargo build --release
+RUN cargo build --release
 
-# ── Runtime Stage ─────────────────────────────────────────────────────────────
-FROM debian:bookworm-slim AS runtime
-
-RUN apt-get update && apt-get install -y \
-    ca-certificates \
-    && rm -rf /var/lib/apt/lists/*
+# ── Runtime Stage (imagen mínima ~20MB base) ───────────────────────────────────
+FROM gcr.io/distroless/cc-debian12 AS runtime
 
 WORKDIR /app
 

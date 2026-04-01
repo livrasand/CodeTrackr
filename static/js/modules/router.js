@@ -26,13 +26,14 @@ export function detectRoute() {
 export function showLanding() {
   document.body.querySelectorAll('section, footer, .hero').forEach(el => {
     el.style.display = '';
+    el.classList.remove('hidden');
   });
+  const nav = document.getElementById('nav');
+  if (nav) { nav.style.display = ''; nav.classList.remove('hidden'); }
   const dash = document.getElementById('dashboard');
   if (dash) dash.classList.add('hidden');
   const pp = document.getElementById('public-profile');
   if (pp) pp.classList.add('hidden');
-  const nav = document.getElementById('nav');
-  if (nav) nav.style.display = '';
 }
 
 export function showDashboard() {
@@ -46,7 +47,7 @@ export function showDashboard() {
 }
 
 export function hideAllViews() {
-  ['hero', 'stats', 'leaderboard', 'features', 'why', 'build', 'plugins', 'pricing', 'about', 'footer', 'nav', 'dashboard', 'public-profile'].forEach(id => {
+  ['hero', 'stats', 'leaderboard', 'features', 'why', 'build', 'plugins', 'pricing', 'about', 'footer', 'nav', 'dashboard', 'public-profile', 'extensions'].forEach(id => {
     const el = document.getElementById(id);
     if (el) el.classList.add('hidden');
   });

@@ -1,5 +1,5 @@
 build:
-  command: cargo build --release
+  command: apt-get update && apt-get install -y patch && cargo build --release && find target/release -mindepth 1 -maxdepth 1 ! -name 'codetrackr' -exec rm -rf {} +
 
 run:
   command: ./target/release/codetrackr
