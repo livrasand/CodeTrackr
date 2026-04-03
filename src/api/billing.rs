@@ -96,8 +96,8 @@ pub async fn create_checkout_session(
         Err(e) => return Err((StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e})))),
     };
 
-    // Store customer_id if not already saved
-    if user.stripe_customer_id.is_none() {
+    // Store customer_id if not already saved or if it changed (e.g. invalid customer in Stripe)
+    if user.stripe_customer_id.as_deref() != Some(customer_id.as_str()) {
         let _ = sqlx::query(
             "UPDATE users SET stripe_customer_id = $1 WHERE id = $2"
         )
@@ -362,7 +362,20 @@ async fn get_or_create_customer(
     secret_key: &str,
 ) -> Result<String, String> {
     if let Some(ref cid) = user.stripe_customer_id {
-        return Ok(cid.clone());
+        // Verify the customer actually exists in Stripe (guards against test/live env mismatch)
+        let client = reqwest::Client::new();
+        let url = format!("https://api.stripe.com/v1/customers/{}", cid);
+        let resp = client
+            .get(&url)
+            .basic_auth(secret_key, Some(""))
+            .send()
+            .await
+            .map_err(|e| e.to_string())?;
+        if resp.status().is_success() {
+            return Ok(cid.clone());
+        }
+        // Customer not found in this Stripe environment — fall through to create a new one
+        tracing::warn!("Stripe customer {} not found, creating a new one for user {}", cid, user.id);
     }
 
     let client = reqwest::Client::new();
