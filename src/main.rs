@@ -341,7 +341,8 @@ fn api_routes(state: AppState, plugin_router: Router<AppState>) -> Router<AppSta
     };
 
     // Rate limiting general con IP real
-    let burst = if cfg!(debug_assertions) { 500 } else { 100 };
+    // Aumentamos burst para permitir ráfagas iniciales de carga de dashboard + plugins
+    let burst = if cfg!(debug_assertions) { 1000 } else { 300 };
     let governor_conf = GovernorConfigBuilder::default()
         .per_second(500)
         .burst_size(burst)
@@ -363,6 +364,7 @@ fn api_routes(state: AppState, plugin_router: Router<AppState>) -> Router<AppSta
         .route("/heartbeat", post(api::heartbeats::create_heartbeat))
         .route("/heartbeats", post(api::heartbeats::create_heartbeats_bulk))
         // Stats
+        .route("/stats/dashboard", get(api::stats::get_dashboard_stats))
         .route("/stats/summary", get(api::stats::get_summary))
         .route("/stats/public", get(api::stats::get_public_summary))
         .route("/stats/languages", get(api::stats::get_languages))

@@ -40,18 +40,7 @@ export async function loadDashboard() {
   if (dateEl) dateEl.textContent = new Date().toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
 
   // Load stats
-  await Promise.allSettled([
-    loadDashSummary(),
-    loadDashDaily(),
-    loadDashLanguages(),
-    loadDashProjects(),
-    loadDashWorkTypes(),
-    loadDashSessions(),
-    loadApiKey(),
-    loadPluginPanels(),
-    loadAdminPanelIfNeeded(),
-    loadProfileSettings(),
-  ]);
+  await loadDashStats();
 
   // Init key action buttons
   initKeyActions();
@@ -60,139 +49,138 @@ export async function loadDashboard() {
   connectWebSocket();
 }
 
-async function loadDashSummary() {
+async function loadDashStats() {
   try {
-    const [week, allTime, streaks] = await Promise.all([
-      api('/stats/summary?range=7d'),
-      api('/stats/summary?range=all'),
-      api('/stats/streaks'),
+    const todayStart = new Date(); todayStart.setHours(0, 0, 0, 0);
+    // Realizamos solo 2 peticiones en lugar de 8+: una para el dashboard completo (7d) y otra para hoy
+    const [dash, todayData] = await Promise.all([
+      api('/stats/dashboard?range=7d'),
+      api(`/stats/summary?start=${todayStart.toISOString()}`)
     ]);
 
-    const todayStart = new Date(); todayStart.setHours(0, 0, 0, 0);
-    const todayData = await api(`/stats/summary?start=${todayStart.toISOString()}`);
-
-    setEl('dcard-today-val', fmt.seconds(todayData.total_seconds));
-    setEl('dcard-today-lang', todayData.top_language ? `Top: ${todayData.top_language}` : '—');
-    setEl('dcard-week-val', fmt.seconds(week.total_seconds));
-    setEl('dcard-week-proj', week.top_project ? `Top: ${week.top_project}` : '—');
-    setEl('dcard-streak-val', streaks.longest_streak ?? 0);
-    setEl('dcard-lang-val', week.top_language || '—');
-    setEl('dash-streak', streaks.current_streak ?? 0);
-  } catch (e) {
-    console.warn('Summary error:', e);
-  }
-}
-
-async function loadDashDaily() {
-  try {
-    const { daily } = await api('/stats/daily?range=7d');
-    const container = $('chart-daily-container');
-    if (!container || !daily) return;
-    container.innerHTML = '';
-    const maxVal = Math.max(...daily.map(d => d.seconds), 1);
-    daily.forEach(d => {
-      const bar = document.createElement('div');
-      bar.className = 'chart-bar';
-      const pct = Math.max((d.seconds / maxVal) * 100, 2);
-      bar.style.height = `${pct}%`;
-      bar.innerHTML = `<div class="chart-bar-tooltip">${fmt.seconds(d.seconds)}<br/>${d.date}</div>`;
-      container.appendChild(bar);
-    });
-  } catch (e) {
-    console.warn('Daily chart error:', e);
-  }
-}
-
-async function loadDashLanguages() {
-  try {
-    const { languages } = await api('/stats/languages?range=7d');
-    const container = $('lang-bars');
-    if (!container || !languages) return;
-    container.innerHTML = '';
-    const langColors = {
-      rust: '#f74c00', python: '#3776ab', typescript: '#3178c6',
-      javascript: '#f7df1e', go: '#00add8', java: '#ed8b00',
-      'c++': '#00599c', swift: '#fa7343', kotlin: '#7f52ff',
-    };
-    languages.slice(0, 6).forEach(l => {
-      const color = langColors[l.language.toLowerCase()] || 'var(--purple-500)';
-      container.insertAdjacentHTML('beforeend', `
-        <div class="lang-bar-item">
-          <div class="lang-bar-header">
-            <span class="lang-bar-name">${l.language}</span>
-            <span class="lang-bar-pct">${l.percentage.toFixed(1)}%</span>
-          </div>
-          <div class="lang-bar-track">
-            <div class="lang-bar-fill" style="width: ${l.percentage}%; background: ${color}"></div>
-          </div>
-        </div>
-      `);
-    });
-    const topLang = languages[0];
-    if (topLang) {
-      setEl('dcard-lang-val', topLang.language);
-      setEl('dcard-lang-pct', `${topLang.percentage.toFixed(0)}% this week`);
+    // 1. Summary
+    if (dash.summary) {
+      setEl('dcard-today-val', fmt.seconds(todayData.total_seconds));
+      setEl('dcard-today-lang', todayData.top_language ? `Top: ${todayData.top_language}` : '—');
+      setEl('dcard-week-val', fmt.seconds(dash.summary.total_seconds));
+      setEl('dcard-week-proj', dash.summary.top_project ? `Top: ${dash.summary.top_project}` : '—');
+      setEl('dcard-lang-val', dash.summary.top_language || '—');
     }
-  } catch (e) {
-    console.warn('Language error:', e);
-  }
-}
-
-async function loadDashProjects() {
-  try {
-    const { projects } = await api('/stats/projects?range=7d');
-    const container = $('dash-projects-list');
-    if (!container || !projects || projects.length === 0) return;
-    const maxSec = Math.max(...projects.map(p => p.seconds), 1);
-    container.innerHTML = projects.slice(0, 8).map(p => {
-      const pct = Math.round((p.seconds / maxSec) * 100);
-      return `
-        <div style="margin-bottom:8px;">
-          <div style="display:flex; justify-content:space-between; font-size:11px; color:var(--text-dark); margin-bottom:3px;">
-            <span style="font-family:var(--font-mono);">${p.project}</span><span>${fmt.seconds(p.seconds)}</span>
-          </div>
-          <div style="background:var(--border); border-radius:2px; height:4px;">
-            <div style="background:var(--text-dark); width:${pct}%; height:100%; border-radius:2px;"></div>
-          </div>
-        </div>`;
-    }).join('');
-  } catch (e) {
-    console.warn('Projects error:', e);
-  }
-}
-
-async function loadDashWorkTypes() {
-  const container = $('dash-work-types-bars');
-  if (!container) return;
-  try {
-    const { work_types, total_seconds } = await api('/stats/work-types?range=7d');
-    if (!work_types || total_seconds === 0) {
-      container.innerHTML = `<span style="font-size:12px; color:var(--text-muted);">No data yet.</span>`;
-      return;
+    if (dash.streaks) {
+      setEl('dcard-streak-val', dash.streaks.longest ?? 0);
+      setEl('dash-streak', dash.streaks.current ?? 0);
     }
-    const workColors = {
-      'Writing code':    'var(--accent)',
-      'Debugging':       '#e05252',
-      'Reading code':    '#5b9bd5',
-      'Config / tooling':'var(--text-dark)',
-    };
-    const sorted = [...work_types].sort((a, b) => b.seconds - a.seconds);
-    container.innerHTML = sorted.map(wt => {
-      const pct = wt.percentage.toFixed(1);
-      const color = workColors[wt.type] || 'var(--text-dark)';
-      return `
-        <div style="margin-bottom:10px;">
-          <div style="display:flex; justify-content:space-between; font-size:11px; color:var(--text-dark); margin-bottom:3px;">
-            <span>${wt.type}</span>
-            <span>${pct}% &nbsp;<span style="color:var(--text-muted);">${fmt.seconds(wt.seconds)}</span></span>
-          </div>
-          <div style="background:var(--border); border-radius:2px; height:5px;">
-            <div style="background:${color}; width:${pct}%; height:100%; border-radius:2px; transition:width .4s;"></div>
-          </div>
-        </div>`;
-    }).join('');
+
+    // 2. Daily Chart
+    if (dash.daily) {
+      const container = $('chart-daily-container');
+      if (container) {
+        container.innerHTML = '';
+        const maxVal = Math.max(...dash.daily.map(d => d.seconds), 1);
+        dash.daily.forEach(d => {
+          const bar = document.createElement('div');
+          bar.className = 'chart-bar';
+          const pct = Math.max((d.seconds / maxVal) * 100, 2);
+          bar.style.height = `${pct}%`;
+          bar.innerHTML = `<div class="chart-bar-tooltip">${fmt.seconds(d.seconds)}<br/>${d.date}</div>`;
+          container.appendChild(bar);
+        });
+      }
+    }
+
+    // 3. Languages
+    if (dash.languages) {
+      const container = $('lang-bars');
+      if (container) {
+        container.innerHTML = '';
+        const langColors = {
+          rust: '#f74c00', python: '#3776ab', typescript: '#3178c6',
+          javascript: '#f7df1e', go: '#00add8', java: '#ed8b00',
+          'c++': '#00599c', swift: '#fa7343', kotlin: '#7f52ff',
+        };
+        dash.languages.slice(0, 6).forEach(l => {
+          const color = langColors[l.language.toLowerCase()] || 'var(--purple-500)';
+          container.insertAdjacentHTML('beforeend', `
+            <div class="lang-bar-item">
+              <div class="lang-bar-header">
+                <span class="lang-bar-name">${l.language}</span>
+                <span class="lang-bar-pct">${l.percentage.toFixed(1)}%</span>
+              </div>
+              <div class="lang-bar-track">
+                <div class="lang-bar-fill" style="width: ${l.percentage}%; background: ${color}"></div>
+              </div>
+            </div>
+          `);
+        });
+        if (dash.languages[0]) {
+          setEl('dcard-lang-val', dash.languages[0].language);
+          setEl('dcard-lang-pct', `${dash.languages[0].percentage.toFixed(0)}% this week`);
+        }
+      }
+    }
+
+    // 4. Projects
+    if (dash.projects) {
+      const container = $('dash-projects-list');
+      if (container && dash.projects.length > 0) {
+        const maxSec = Math.max(...dash.projects.map(p => p.seconds), 1);
+        container.innerHTML = dash.projects.slice(0, 8).map(p => {
+          const pct = Math.round((p.seconds / maxSec) * 100);
+          return `
+            <div style="margin-bottom:8px;">
+              <div style="display:flex; justify-content:space-between; font-size:11px; color:var(--text-dark); margin-bottom:3px;">
+                <span style="font-family:var(--font-mono);">${p.project}</span><span>${fmt.seconds(p.seconds)}</span>
+              </div>
+              <div style="background:var(--border); border-radius:2px; height:4px;">
+                <div style="background:var(--text-dark); width:${pct}%; height:100%; border-radius:2px;"></div>
+              </div>
+            </div>`;
+        }).join('');
+      }
+    }
+
+    // 5. Work Types
+    if (dash.work_types) {
+      const container = $('dash-work-types-bars');
+      if (container) {
+        const { types, total_seconds } = dash.work_types;
+        if (!types || total_seconds === 0) {
+          container.innerHTML = `<span style="font-size:12px; color:var(--text-muted);">No data yet.</span>`;
+        } else {
+          const workColors = {
+            'Writing code':    'var(--accent)', 'Debugging': '#e05252',
+            'Reading code':    '#5b9bd5', 'Config / tooling': 'var(--text-dark)',
+          };
+          const sorted = [...types].sort((a, b) => b.seconds - a.seconds);
+          container.innerHTML = sorted.map(wt => {
+            const pct = wt.percentage.toFixed(1);
+            const color = workColors[wt.type] || 'var(--text-dark)';
+            return `
+              <div style="margin-bottom:10px;">
+                <div style="display:flex; justify-content:space-between; font-size:11px; color:var(--text-dark); margin-bottom:3px;">
+                  <span>${wt.type}</span>
+                  <span>${pct}% &nbsp;<span style="color:var(--text-muted);">${fmt.seconds(wt.seconds)}</span></span>
+                </div>
+                <div style="background:var(--border); border-radius:2px; height:5px;">
+                  <div style="background:${color}; width:${pct}%; height:100%; border-radius:2px; transition:width .4s;"></div>
+                </div>
+              </div>`;
+          }).join('');
+        }
+      }
+    }
+
+    // Load remaining non-combined parts
+    await Promise.allSettled([
+      loadDashSessions(),
+      loadApiKey(),
+      loadPluginPanels(),
+      loadAdminPanelIfNeeded(),
+      loadProfileSettings(),
+    ]);
+
   } catch (e) {
-    console.warn('Work types error:', e);
+    console.warn('Dashboard stats error:', e);
   }
 }
 

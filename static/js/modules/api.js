@@ -8,9 +8,9 @@ import { getCurrentToken, getRefreshToken, refreshAccessToken, logout } from './
 const API = '/api/v1';
 let refreshInFlight = null;
 
-const MAX_CONCURRENT = 6;
-const MIN_INTERVAL_MS = 100; // ~10 req/s to avoid server burst limits
-const MAX_RETRIES = 3;
+const MAX_CONCURRENT = 10;
+const MIN_INTERVAL_MS = 150; // ~7 req/s to avoid server burst limits
+const MAX_RETRIES = 5;
 
 let inFlight = 0;
 let lastRequestAt = 0;
@@ -82,13 +82,31 @@ async function fetchWithRetry(url, options) {
     res = await fetch(url, options);
     if (res.status !== 429) return res;
 
+    // Retry-After handling
+    let waitMs = 0;
     const retryAfter = res.headers.get('Retry-After');
-    const retryAfterMs = retryAfter && !Number.isNaN(Number(retryAfter))
-      ? Number(retryAfter) * 1000
-      : null;
-    const backoffMs = Math.min(2000 * (2 ** attempt), 8000);
-    const jitter = Math.floor(Math.random() * 250);
-    await sleep(retryAfterMs ?? (backoffMs + jitter));
+    if (retryAfter) {
+      if (!Number.isNaN(Number(retryAfter))) {
+        waitMs = Number(retryAfter) * 1000;
+      } else {
+        // Handle Date format: "Wed, 21 Oct 2015 07:28:00 GMT"
+        const date = Date.parse(retryAfter);
+        if (!Number.isNaN(date)) {
+          waitMs = Math.max(0, date - Date.now());
+        }
+      }
+    }
+
+    // Default backoff if Retry-After is missing or invalid:
+    // 500ms, 1s, 2s, 4s, 8s + jitter
+    if (waitMs <= 0) {
+      const backoffMs = Math.min(500 * (2 ** attempt), 10000);
+      const jitter = Math.floor(Math.random() * 500);
+      waitMs = backoffMs + jitter;
+    }
+
+    console.warn(`Rate limited (429) on ${url}. Retrying in ${waitMs}ms (attempt ${attempt + 1}/${MAX_RETRIES})`);
+    await sleep(waitMs);
   }
   return res;
 }

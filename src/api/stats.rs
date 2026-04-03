@@ -11,6 +11,142 @@ use uuid::Uuid;
 
 use crate::{AppState, auth::AuthenticatedUser, models::*, error_handling};
 
+pub async fn get_dashboard_stats(
+    AuthenticatedUser(user): AuthenticatedUser,
+    State(state): State<AppState>,
+    Query(q): Query<StatsQuery>,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let (start, end) = parse_range(&q);
+    
+    // We'll perform multiple queries and combine them. 
+    // For simplicity and to avoid complex JOINs, we reuse existing logic where possible.
+    
+    // 1. Summary + Streaks
+    let summary = get_summary_data(&state, user.id, start, end).await;
+    let streaks = calculate_streak(&state, user.id).await;
+    
+    // 2. Daily
+    let daily_rows = sqlx::query_as::<_, DayRow>(
+        r#"SELECT DATE(recorded_at) as date, CAST(SUM(duration_seconds) AS BIGINT) as seconds
+           FROM heartbeats WHERE user_id = $1 AND recorded_at BETWEEN $2 AND $3
+           GROUP BY date ORDER BY date ASC"#,
+    )
+    .bind(user.id).bind(start).bind(end)
+    .fetch_all(&state.db.pool).await.unwrap_or_default();
+    let daily: Vec<serde_json::Value> = daily_rows.into_iter().map(|r| {
+        json!({ "date": r.date, "seconds": r.seconds.unwrap_or(0) })
+    }).collect();
+
+    // 3. Languages
+    let lang_rows = sqlx::query_as::<_, LangRow>(
+        r#"SELECT language, CAST(SUM(duration_seconds) AS BIGINT) as seconds FROM heartbeats
+           WHERE user_id = $1 AND recorded_at BETWEEN $2 AND $3 AND language IS NOT NULL
+           GROUP BY language ORDER BY seconds DESC"#,
+    )
+    .bind(user.id).bind(start).bind(end)
+    .fetch_all(&state.db.pool).await.unwrap_or_default();
+    let lang_total: i64 = lang_rows.iter().filter_map(|r| r.seconds).sum();
+    let languages: Vec<LanguageStat> = lang_rows.into_iter()
+        .filter_map(|r| {
+            Some(LanguageStat {
+                language: r.language?,
+                seconds: r.seconds.unwrap_or(0),
+                percentage: if lang_total > 0 { r.seconds.unwrap_or(0) as f64 / lang_total as f64 * 100.0 } else { 0.0 },
+            })
+        })
+        .collect();
+
+    // 4. Projects
+    let proj_rows = sqlx::query_as::<_, ProjRow>(
+        r#"SELECT project, CAST(SUM(duration_seconds) AS BIGINT) as seconds, MAX(recorded_at) as last_heartbeat
+           FROM heartbeats WHERE user_id = $1 AND recorded_at BETWEEN $2 AND $3
+           GROUP BY project ORDER BY seconds DESC"#,
+    )
+    .bind(user.id).bind(start).bind(end)
+    .fetch_all(&state.db.pool).await.unwrap_or_default();
+    let projects: Vec<serde_json::Value> = proj_rows.into_iter().map(|r| {
+        json!({ "project": r.project, "seconds": r.seconds.unwrap_or(0), "last_heartbeat": r.last_heartbeat })
+    }).collect();
+
+    // 5. Work Types
+    #[derive(sqlx::FromRow)]
+    struct HbRow { file: Option<String>, branch: Option<String>, is_write: bool, duration_seconds: i32 }
+    let hb_rows = sqlx::query_as::<_, HbRow>(
+        "SELECT file, branch, is_write, duration_seconds FROM heartbeats WHERE user_id = $1 AND recorded_at BETWEEN $2 AND $3"
+    )
+    .bind(user.id).bind(start).bind(end)
+    .fetch_all(&state.db.pool).await.unwrap_or_default();
+    
+    let (mut w, mut d, mut r, mut c) = (0i64, 0i64, 0i64, 0i64);
+    for row in &hb_rows {
+        match classify_work_type(row.file.as_deref(), row.branch.as_deref(), row.is_write) {
+            "writing"   => w += row.duration_seconds as i64,
+            "debugging" => d += row.duration_seconds as i64,
+            "reading"   => r += row.duration_seconds as i64,
+            "config"    => c += row.duration_seconds as i64,
+            _ => {}
+        }
+    }
+    let total_wt = w + d + r + c;
+    let pct = |s: i64| if total_wt == 0 { 0.0 } else { (s as f64 / total_wt as f64) * 100.0 };
+
+    Ok(Json(json!({
+        "summary": {
+            "total_seconds": summary.0,
+            "daily_average": summary.0 / (end - start).num_days().max(1),
+            "top_language": summary.1,
+            "top_project": summary.2,
+        },
+        "streaks": {
+            "current": streaks.0,
+            "longest": streaks.1,
+        },
+        "daily": daily,
+        "languages": languages,
+        "projects": projects,
+        "work_types": {
+            "total_seconds": total_wt,
+            "types": [
+                { "type": "Writing code",    "seconds": w, "percentage": pct(w) },
+                { "type": "Debugging",       "seconds": d, "percentage": pct(d) },
+                { "type": "Reading code",    "seconds": r, "percentage": pct(r) },
+                { "type": "Config / tooling","seconds": c, "percentage": pct(c) },
+            ]
+        }
+    })))
+}
+
+async fn get_summary_data(state: &AppState, user_id: Uuid, start: DateTime<Utc>, end: DateTime<Utc>) -> (i64, Option<String>, Option<String>) {
+    let total: i64 = sqlx::query_scalar(
+        "SELECT COALESCE(SUM(duration_seconds), 0) FROM heartbeats WHERE user_id = $1 AND recorded_at BETWEEN $2 AND $3"
+    )
+    .bind(user_id).bind(start).bind(end)
+    .fetch_one(&state.db.pool).await.unwrap_or(0);
+
+    let top_lang: Option<String> = sqlx::query_scalar(
+        r#"SELECT language FROM heartbeats WHERE user_id = $1 AND recorded_at BETWEEN $2 AND $3
+           AND language IS NOT NULL GROUP BY language ORDER BY SUM(duration_seconds) DESC LIMIT 1"#
+    )
+    .bind(user_id).bind(start).bind(end)
+    .fetch_optional(&state.db.pool).await.ok().flatten();
+
+    let top_proj: Option<String> = sqlx::query_scalar(
+        r#"SELECT project FROM heartbeats WHERE user_id = $1 AND recorded_at BETWEEN $2 AND $3
+           GROUP BY project ORDER BY SUM(duration_seconds) DESC LIMIT 1"#
+    )
+    .bind(user_id).bind(start).bind(end)
+    .fetch_optional(&state.db.pool).await.ok().flatten();
+
+    (total, top_lang, top_proj)
+}
+
+#[derive(sqlx::FromRow)]
+struct DayRow { date: Option<chrono::NaiveDate>, seconds: Option<i64> }
+#[derive(sqlx::FromRow)]
+struct LangRow { language: Option<String>, seconds: Option<i64> }
+#[derive(sqlx::FromRow)]
+struct ProjRow { project: String, seconds: Option<i64>, last_heartbeat: Option<DateTime<Utc>> }
+
 #[derive(Deserialize)]
 pub struct StatsQuery {
     pub start: Option<DateTime<Utc>>,
@@ -83,9 +219,6 @@ pub async fn get_languages(
 ) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
     let (start, end) = parse_range(&q);
 
-    #[derive(sqlx::FromRow)]
-    struct LangRow { language: Option<String>, seconds: Option<i64> }
-
     let rows = sqlx::query_as::<_, LangRow>(
         r#"SELECT language, CAST(SUM(duration_seconds) AS BIGINT) as seconds FROM heartbeats
            WHERE user_id = $1 AND recorded_at BETWEEN $2 AND $3 AND language IS NOT NULL
@@ -117,9 +250,6 @@ pub async fn get_projects(
 ) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
     let (start, end) = parse_range(&q);
 
-    #[derive(sqlx::FromRow)]
-    struct ProjRow { project: String, seconds: Option<i64>, last_heartbeat: Option<DateTime<Utc>> }
-
     let rows = sqlx::query_as::<_, ProjRow>(
         r#"SELECT project, CAST(SUM(duration_seconds) AS BIGINT) as seconds, MAX(recorded_at) as last_heartbeat
            FROM heartbeats WHERE user_id = $1 AND recorded_at BETWEEN $2 AND $3
@@ -146,9 +276,6 @@ pub async fn get_daily(
     Query(q): Query<StatsQuery>,
 ) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
     let (start, end) = parse_range(&q);
-
-    #[derive(sqlx::FromRow)]
-    struct DayRow { date: Option<chrono::NaiveDate>, seconds: Option<i64> }
 
     let rows = sqlx::query_as::<_, DayRow>(
         r#"SELECT DATE(recorded_at) as date, CAST(SUM(duration_seconds) AS BIGINT) as seconds
