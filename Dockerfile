@@ -1,7 +1,7 @@
 # Multi-stage build — cargo-chef for dep caching + distroless runtime
 
 # ── Chef Stage (instala cargo-chef una sola vez) ───────────────────────────────
-FROM rust:1.85-slim AS chef
+FROM rust:1.88-slim AS chef
 RUN apt-get update && apt-get install -y pkg-config libssl-dev patch && rm -rf /var/lib/apt/lists/*
 RUN cargo install cargo-chef --locked
 WORKDIR /app
