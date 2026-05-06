@@ -287,26 +287,37 @@ pub async fn gitlab_callback(
         "refresh_token": refresh_response.refresh_token
     });
 
-    // Intentar almacenar en Redis primero
-    let exchange_stored = match state.redis.get_conn().await {
+    let result: Result<(), redis::RedisError> = match state.redis.get_conn().await {
         Ok(mut conn) => {
-            let result: Result<(), _> = redis::cmd("SETEX")
-                .arg(format!("auth_exchange:{}", exchange_code))
+            let key = format!("auth_exchange:{}", exchange_code);
+            match redis::cmd("SETEX")
+                .arg(&key)
                 .arg(600) // 10 minutos
                 .arg(token_data.to_string())
                 .query_async(&mut conn)
-                .await;
-            result.is_ok()
+                .await
+            {
+                Ok(_) => Ok(()),
+                Err(e) => {
+                    tracing::warn!("Redis SETEX failed (potentially broken pipe), retrying: {}", e);
+                    redis::cmd("SETEX")
+                        .arg(&key)
+                        .arg(600)
+                        .arg(token_data.to_string())
+                        .query_async(&mut conn)
+                        .await
+                }
+            }
         }
         Err(e) => {
             tracing::error!("Redis get_conn failed during gitlab_callback: {}", e);
-            false
+            Err(redis::RedisError::from((redis::ErrorKind::IoError, "Redis connection failed")))
         }
     };
 
-    if !exchange_stored {
+    if let Err(ref e) = result {
         // Redis unavailable — fall back to in-memory store
-        tracing::warn!("Redis unavailable, storing exchange code in memory");
+        tracing::warn!("Redis unavailable after retry ({}), storing exchange code in memory", e);
         let mut codes = state.exchange_codes.lock().await;
         codes.insert(exchange_code.clone(), (token_data, std::time::Instant::now()));
     }

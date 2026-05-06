@@ -268,8 +268,10 @@
                     <a href="#widget-plugins" class="sidebar-link">Widget Plugins</a>
                     <a href="#widget-plugins" class="sidebar-link" style="padding-left:20px; font-size:11px;">↳ CSS Design Tokens</a>
                     <a href="#lifecycle-plugins" class="sidebar-link">Lifecycle Plugins</a>
+                    <a href="#requesting-special-permissions" class="sidebar-link" style="padding-left:20px; font-size:11px;">↳ Special Permissions</a>
                     <a href="#plugin-store" class="sidebar-link">Plugin Store</a>
                     <a href="#submitting-a-package" class="sidebar-link">Publishing</a>
+                    <a href="#publishing-special-permissions" class="sidebar-link" style="padding-left:20px; font-size:11px;">↳ Special Permissions</a>
                 </div>
             </div>
             <div class="sidebar-group">
@@ -896,6 +898,20 @@ log('Project:', heartbeat.project, '— duration:', heartbeat.duration + 's');</
                 </div>
                 <p>Allowed SQL commands are <code>SELECT</code>, <code>INSERT</code>, <code>UPDATE</code>, and <code>DELETE</code>. DDL commands (<code>DROP</code>, <code>CREATE</code>, <code>ALTER</code>, <code>TRUNCATE</code>, etc.) are always rejected.</p>
 
+                <h3 id="requesting-special-permissions">Requesting Special Permissions</h3>
+                <p>If your plugin requires access to tables not listed above, or requires extended permissions (such as <code>admin</code> access to perform deletions), you must open an issue on our <a href="https://github.com/livrasand/CodeTrackr">GitHub repository</a>.</p>
+                <p>Please include the SQL migration format for the permissions you require. For example:</p>
+                <pre><code class="language-sql">-- Grant admin permissions to 'my-plugin' for heartbeats
+INSERT INTO plugin_permissions (plugin_id, table_name, access_type, allowed_columns, requires_user_filter)
+SELECT id, 'heartbeats', 'admin', 
+       ARRAY['project', 'file', 'language', 'duration_seconds', 'is_write', 'editor', 'os', 'recorded_at'], 
+       true
+FROM plugin_store
+WHERE name = 'my-plugin'
+ON CONFLICT (plugin_id, table_name) DO UPDATE 
+SET access_type = 'admin';</code></pre>
+
+
                 <h3>Redis — private namespace</h3>
                 <p>All Redis keys are automatically namespaced to your plugin and user. The key you pass to <code>ctx.redis.*</code> is prefixed with <code>plugin:&lt;plugin-name&gt;:&lt;user-id&gt;:</code> before any operation — you cannot read or overwrite keys belonging to another plugin or another user.</p>
                 <pre><code class="language-javascript">async function on_heartbeat(ctx, heartbeat) {
@@ -1482,7 +1498,12 @@ fetch('/api/v1/plugins/streak-notifier/rpc/get-streak', {
                         </tbody>
                     </table>
                 </div>
+
+                <h3 id="publishing-special-permissions">Special Permissions</h3>
+                <p>If your plugin needs to perform administrative tasks (e.g., deleting user data) or access restricted tables, please open an issue in our <a href="https://github.com/livrasand/CodeTrackr">GitHub Repository</a>. For more information, see <a href="#lifecycle-plugins">Requesting Special Permissions</a>.</p>
+
                 <h3>Updating an existing plugin</h3>
+
                 <p>Publishing with the same <code>name</code> performs an in-place update (upsert). All users who have
                     the plugin installed will receive the new script on their next dashboard load — no reinstall
                     required.</p>

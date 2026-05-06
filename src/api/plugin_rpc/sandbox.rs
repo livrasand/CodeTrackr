@@ -448,8 +448,17 @@ const ctx = {{
       return Promise.resolve(); 
     }}
   }},
-  config: {{ base_url: "https://codetrackr.leapcell.app" }}
+  config: {{ base_url: "https://codetrackr.leapcell.app" }},
+  // Mock globals for server-side evaluation to avoid ReferenceErrors
+  isDark: true,
+  container: null,
+  token: "server-context"
 }};
+
+// Legacy aliases for backward compatibility
+const isDark = ctx.isDark;
+const container = ctx.container;
+const token = ctx.token;
 
 // ── Plugin script ─────────────────────────────────────────────────────────────
 {plugin_script}
@@ -517,8 +526,17 @@ const ctx = {{
       return Promise.resolve(); 
     }}
   }},
-  config: {{ base_url: "https://codetrackr.leapcell.app" }}
+  config: {{ base_url: "https://codetrackr.leapcell.app" }},
+  // Mock globals for server-side evaluation to avoid ReferenceErrors
+  isDark: true,
+  container: null,
+  token: "server-context"
 }};
+
+// Legacy aliases for backward compatibility
+const isDark = ctx.isDark;
+const container = ctx.container;
+const token = ctx.token;
 
 const event = {event_data_json};
 

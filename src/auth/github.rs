@@ -269,14 +269,28 @@ pub async fn github_callback(
     
     let exchange_stored = match state.redis.get_conn().await {
         Ok(mut conn) => {
-            let result: Result<(), redis::RedisError> = redis::cmd("SETEX")
+            let result: Result<(), redis::RedisError> = match redis::cmd("SETEX")
                 .arg(&exchange_key)
                 .arg(300) // 5 minutos TTL
                 .arg(token_data.to_string())
                 .query_async(&mut conn)
-                .await;
+                .await
+            {
+                Ok(_) => Ok(()),
+                Err(e) => {
+                    // Si falla por broken pipe o error de IO, reintentar una vez
+                    // ConnectionManager intentará reconectar automáticamente en el segundo intento
+                    tracing::warn!("Redis operation failed (potentially broken pipe), retrying: {}", e);
+                    redis::cmd("SETEX")
+                        .arg(&exchange_key)
+                        .arg(300)
+                        .arg(token_data.to_string())
+                        .query_async(&mut conn)
+                        .await
+                }
+            };
             if let Err(ref e) = result {
-                tracing::error!("Redis SETEX failed for exchange code {}: {}", exchange_code, e);
+                tracing::error!("Redis SETEX failed after retry for exchange code {}: {}", exchange_code, e);
             }
             result.is_ok()
         }
@@ -326,13 +340,23 @@ pub async fn exchange_code(
         Ok(mut conn) => {
             let data: Option<String> = match redis::cmd("GET")
                 .arg(&exchange_key)
-                .query_async(&mut conn)
+                .query_async::<_, Option<String>>(&mut conn)
                 .await
             {
                 Ok(val) => val,
                 Err(e) => {
-                    tracing::error!("Redis GET failed for exchange key {}: {}", exchange_key, e);
-                    None
+                    tracing::warn!("Redis GET failed (potentially broken pipe), retrying: {}", e);
+                    match redis::cmd("GET")
+                        .arg(&exchange_key)
+                        .query_async::<_, Option<String>>(&mut conn)
+                        .await 
+                    {
+                        Ok(val) => val,
+                        Err(e2) => {
+                            tracing::error!("Redis GET failed after retry for exchange key {}: {}", exchange_key, e2);
+                            None
+                        }
+                    }
                 }
             };
 
