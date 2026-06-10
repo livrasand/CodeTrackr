@@ -269,11 +269,11 @@ pub async fn github_callback(
     
     let exchange_stored = match state.redis.get_conn().await {
         Ok(mut conn) => {
-            let result: Result<(), redis::RedisError> = match redis::cmd("SETEX")
+            let result: Result<(), redis::RedisError> =             match redis::cmd("SETEX")
                 .arg(&exchange_key)
                 .arg(300) // 5 minutos TTL
                 .arg(token_data.to_string())
-                .query_async(&mut conn)
+                .query_async::<_, ()>(&mut conn)
                 .await
             {
                 Ok(_) => Ok(()),
@@ -285,7 +285,7 @@ pub async fn github_callback(
                         .arg(&exchange_key)
                         .arg(300)
                         .arg(token_data.to_string())
-                        .query_async(&mut conn)
+                        .query_async::<_, ()>(&mut conn)
                         .await
                 }
             };

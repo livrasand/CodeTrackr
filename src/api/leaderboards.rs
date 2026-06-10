@@ -35,7 +35,7 @@ pub async fn get_global(
             .arg("LIMIT")
             .arg(offset)
             .arg(limit)
-            .query_async(&mut conn)
+            .query_async::<_, Vec<(String, f64)>>(&mut conn)
             .await
             .unwrap_or_default(),
         Err(_) => vec![],
@@ -154,7 +154,7 @@ pub async fn get_by_language(
             .arg("LIMIT")
             .arg(offset)
             .arg(limit)
-            .query_async(&mut conn)
+            .query_async::<_, Vec<(String, f64)>>(&mut conn)
             .await
             .unwrap_or_default(),
         Err(_) => vec![],

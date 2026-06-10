@@ -294,7 +294,7 @@ pub async fn gitlab_callback(
                 .arg(&key)
                 .arg(600) // 10 minutos
                 .arg(token_data.to_string())
-                .query_async(&mut conn)
+                .query_async::<_, ()>(&mut conn)
                 .await
             {
                 Ok(_) => Ok(()),
@@ -304,7 +304,7 @@ pub async fn gitlab_callback(
                         .arg(&key)
                         .arg(600)
                         .arg(token_data.to_string())
-                        .query_async(&mut conn)
+                        .query_async::<_, ()>(&mut conn)
                         .await
                 }
             }

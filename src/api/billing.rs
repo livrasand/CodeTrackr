@@ -1,17 +1,17 @@
 use axum::{
-    extract::State,
-    response::Json,
-    http::{StatusCode, HeaderMap},
     body::Bytes,
     extract::Query,
+    extract::State,
+    http::{HeaderMap, StatusCode},
+    response::Json,
 };
+use hmac::{Hmac, Mac};
 use serde::Deserialize;
 use serde_json::{json, Value};
-use hmac::{Hmac, Mac};
 use sha2::Sha256;
 use uuid::Uuid;
 
-use crate::{AppState, auth::AuthenticatedUser, error_handling};
+use crate::{auth::AuthenticatedUser, error_handling, AppState};
 
 // Webhook helpers are wired when Stripe webhooks are enabled.
 #[allow(dead_code)]
@@ -28,16 +28,16 @@ pub struct WebhookQuery {
 async fn generate_webhook_csrf_token(state: &AppState, user_id: &str) -> String {
     let token = Uuid::new_v4().to_string();
     let key = format!("webhook_csrf:{}", user_id);
-    
+
     if let Ok(mut conn) = state.redis.get_conn().await {
         let _: Result<(), redis::RedisError> = redis::cmd("SETEX")
             .arg(&key)
             .arg(300) // 5 minutes TTL
             .arg(&token)
-            .query_async(&mut conn)
+            .query_async::<_, ()>(&mut conn)
             .await;
     }
-    
+
     token
 }
 
@@ -45,24 +45,25 @@ async fn generate_webhook_csrf_token(state: &AppState, user_id: &str) -> String 
 #[allow(dead_code)]
 async fn verify_webhook_csrf_token(state: &AppState, user_id: &str, token: &str) -> bool {
     let key = format!("webhook_csrf:{}", user_id);
-    
+
     if let Ok(mut conn) = state.redis.get_conn().await {
         let stored_token: Option<String> = redis::cmd("GET")
             .arg(&key)
-            .query_async(&mut conn)
+            .query_async::<_, Option<String>>(&mut conn)
             .await
-            .ok();
-        
+            .ok()
+            .flatten();
+
         if let Some(stored) = stored_token {
             // Consume the token (single-use)
             let _: Result<(), _> = redis::cmd("DEL")
                 .arg(&key)
-                .query_async(&mut conn)
+                .query_async::<_, ()>(&mut conn)
                 .await;
             return stored == token;
         }
     }
-    
+
     false
 }
 
@@ -80,15 +81,28 @@ pub async fn create_checkout_session(
     State(state): State<AppState>,
     Json(body): Json<CheckoutRequest>,
 ) -> Result<Json<Value>, (StatusCode, Json<Value>)> {
-    let secret_key = std::env::var("STRIPE_SECRET_KEY")
-        .map_err(|_| (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": "Stripe not configured"}))))?;
+    let secret_key = std::env::var("STRIPE_SECRET_KEY").map_err(|_| {
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(json!({"error": "Stripe not configured"})),
+        )
+    })?;
 
     let frontend_url = &state.config.frontend_url;
     if !frontend_url.starts_with("http://") && !frontend_url.starts_with("https://") {
-        return Err((StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": "FRONTEND_URL must include scheme (https://...). Check server configuration."}))));
+        return Err((
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(
+                json!({"error": "FRONTEND_URL must include scheme (https://...). Check server configuration."}),
+            ),
+        ));
     }
-    let success_url = body.success_url.unwrap_or_else(|| format!("{}/billing/success", frontend_url));
-    let cancel_url = body.cancel_url.unwrap_or_else(|| format!("{}/billing/cancel", frontend_url));
+    let success_url = body
+        .success_url
+        .unwrap_or_else(|| format!("{}/billing/success", frontend_url));
+    let cancel_url = body
+        .cancel_url
+        .unwrap_or_else(|| format!("{}/billing/cancel", frontend_url));
 
     // Fetch or create Stripe customer
     let customer_id = match get_or_create_customer(&user, &secret_key).await {
@@ -98,21 +112,19 @@ pub async fn create_checkout_session(
 
     // Store customer_id if not already saved or if it changed (e.g. invalid customer in Stripe)
     if user.stripe_customer_id.as_deref() != Some(customer_id.as_str()) {
-        let _ = sqlx::query(
-            "UPDATE users SET stripe_customer_id = $1 WHERE id = $2"
-        )
-        .bind(&customer_id)
-        .bind(user.id)
-        .execute(&state.db.pool)
-        .await;
+        let _ = sqlx::query("UPDATE users SET stripe_customer_id = $1 WHERE id = $2")
+            .bind(&customer_id)
+            .bind(user.id)
+            .execute(&state.db.pool)
+            .await;
     }
 
     // Create user_id_str for CSRF token
     let user_id_str = user.id.to_string();
-    
+
     // Generate CSRF token for webhook validation
     let csrf_token = generate_webhook_csrf_token(&state, &user_id_str).await;
-    
+
     // Create checkout session
     let client = reqwest::Client::new();
     let params = [
@@ -132,14 +144,26 @@ pub async fn create_checkout_session(
         .form(&params)
         .send()
         .await
-        .map_err(|e| (StatusCode::BAD_GATEWAY, Json(json!({"error": e.to_string()}))))?;
+        .map_err(|e| {
+            (
+                StatusCode::BAD_GATEWAY,
+                Json(json!({"error": e.to_string()})),
+            )
+        })?;
 
     let status = resp.status();
-    let data: Value = resp.json().await
-        .map_err(|e| (StatusCode::BAD_GATEWAY, Json(json!({"error": e.to_string()}))))?;
+    let data: Value = resp.json().await.map_err(|e| {
+        (
+            StatusCode::BAD_GATEWAY,
+            Json(json!({"error": e.to_string()})),
+        )
+    })?;
 
     if !status.is_success() {
-        let msg = data["error"]["message"].as_str().unwrap_or("Stripe error").to_string();
+        let msg = data["error"]["message"]
+            .as_str()
+            .unwrap_or("Stripe error")
+            .to_string();
         return Err((StatusCode::BAD_GATEWAY, Json(json!({"error": msg}))));
     }
 
@@ -172,7 +196,9 @@ pub async fn get_billing_config() -> Json<Value> {
     let publishable_key = std::env::var("STRIPE_PUBLISHABLE_KEY").unwrap_or_default();
     let price_id = std::env::var("STRIPE_PRICE_ID").unwrap_or_default();
     let price_id_yearly = std::env::var("STRIPE_PRICE_ID_YEARLY").unwrap_or_default();
-    Json(json!({ "publishable_key": publishable_key, "price_id": price_id, "price_id_yearly": price_id_yearly }))
+    Json(
+        json!({ "publishable_key": publishable_key, "price_id": price_id, "price_id_yearly": price_id_yearly }),
+    )
 }
 
 // ── Create Portal Session (manage subscription) ───────────────────────────────
@@ -181,11 +207,18 @@ pub async fn create_portal_session(
     AuthenticatedUser(user): AuthenticatedUser,
     State(state): State<AppState>,
 ) -> Result<Json<Value>, (StatusCode, Json<Value>)> {
-    let secret_key = std::env::var("STRIPE_SECRET_KEY")
-        .map_err(|_| (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": "Stripe not configured"}))))?;
+    let secret_key = std::env::var("STRIPE_SECRET_KEY").map_err(|_| {
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(json!({"error": "Stripe not configured"})),
+        )
+    })?;
 
     let customer_id = user.stripe_customer_id.ok_or_else(|| {
-        (StatusCode::BAD_REQUEST, Json(json!({"error": "No active subscription"})))
+        (
+            StatusCode::BAD_REQUEST,
+            Json(json!({"error": "No active subscription"})),
+        )
     })?;
 
     let return_url = format!("{}/settings", state.config.frontend_url);
@@ -202,14 +235,26 @@ pub async fn create_portal_session(
         .form(&params)
         .send()
         .await
-        .map_err(|e| (StatusCode::BAD_GATEWAY, Json(json!({"error": e.to_string()}))))?;
+        .map_err(|e| {
+            (
+                StatusCode::BAD_GATEWAY,
+                Json(json!({"error": e.to_string()})),
+            )
+        })?;
 
     let status = resp.status();
-    let data: Value = resp.json().await
-        .map_err(|e| (StatusCode::BAD_GATEWAY, Json(json!({"error": e.to_string()}))))?;
+    let data: Value = resp.json().await.map_err(|e| {
+        (
+            StatusCode::BAD_GATEWAY,
+            Json(json!({"error": e.to_string()})),
+        )
+    })?;
 
     if !status.is_success() {
-        let msg = data["error"]["message"].as_str().unwrap_or("Stripe error").to_string();
+        let msg = data["error"]["message"]
+            .as_str()
+            .unwrap_or("Stripe error")
+            .to_string();
         return Err((StatusCode::BAD_GATEWAY, Json(json!({"error": msg}))));
     }
 
@@ -225,20 +270,33 @@ pub async fn stripe_webhook(
     body: Bytes,
     Query(query): Query<WebhookQuery>,
 ) -> Result<Json<Value>, (StatusCode, Json<Value>)> {
-    let webhook_secret = std::env::var("STRIPE_WEBHOOK_SECRET")
-        .map_err(|_| (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": "Webhook secret not configured"}))))?;
+    let webhook_secret = std::env::var("STRIPE_WEBHOOK_SECRET").map_err(|_| {
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(json!({"error": "Webhook secret not configured"})),
+        )
+    })?;
 
     let sig_header = headers
         .get("stripe-signature")
         .and_then(|v| v.to_str().ok())
-        .ok_or_else(|| (StatusCode::BAD_REQUEST, Json(json!({"error": "Missing stripe-signature"}))))?;
+        .ok_or_else(|| {
+            (
+                StatusCode::BAD_REQUEST,
+                Json(json!({"error": "Missing stripe-signature"})),
+            )
+        })?;
 
     // Verify signature
     verify_stripe_signature(&body, sig_header, &webhook_secret)
         .map_err(|e| (StatusCode::BAD_REQUEST, Json(json!({"error": e}))))?;
 
-    let event: Value = serde_json::from_slice(&body)
-        .map_err(|e| (StatusCode::BAD_REQUEST, Json(json!({"error": e.to_string()}))))?;
+    let event: Value = serde_json::from_slice(&body).map_err(|e| {
+        (
+            StatusCode::BAD_REQUEST,
+            Json(json!({"error": e.to_string()})),
+        )
+    })?;
 
     let event_type = event["type"].as_str().unwrap_or("");
 
@@ -279,16 +337,29 @@ async fn handle_checkout_completed(
     // Verify CSRF token if provided
     if let Some(query_token) = query_csrf_token {
         if !verify_webhook_csrf_token(state, user_id_str, query_token).await {
-            tracing::warn!("Invalid CSRF token for webhook processing user {}", user_id_str);
-            return Err((StatusCode::BAD_REQUEST, Json(json!({"error": "Invalid CSRF token"}))));
+            tracing::warn!(
+                "Invalid CSRF token for webhook processing user {}",
+                user_id_str
+            );
+            return Err((
+                StatusCode::BAD_REQUEST,
+                Json(json!({"error": "Invalid CSRF token"})),
+            ));
         }
     } else if !csrf_token.is_empty() {
         // If no query token but we have one in metadata, require it
-        return Err((StatusCode::BAD_REQUEST, Json(json!({"error": "CSRF token required"}))));
+        return Err((
+            StatusCode::BAD_REQUEST,
+            Json(json!({"error": "CSRF token required"})),
+        ));
     }
 
-    let user_id = uuid::Uuid::parse_str(user_id_str)
-        .map_err(|_| (StatusCode::BAD_REQUEST, Json(json!({"error": "Invalid user_id"}))))?;
+    let user_id = uuid::Uuid::parse_str(user_id_str).map_err(|_| {
+        (
+            StatusCode::BAD_REQUEST,
+            Json(json!({"error": "Invalid user_id"})),
+        )
+    })?;
 
     sqlx::query(
         "UPDATE users SET plan = 'pro', stripe_subscription_id = $1, stripe_customer_id = $2, updated_at = NOW() WHERE id = $3"
@@ -300,7 +371,11 @@ async fn handle_checkout_completed(
     .await
     .map_err(|e| error_handling::handle_database_error(e))?;
 
-    tracing::info!("User {} upgraded to Pro (sub: {})", user_id, subscription_id);
+    tracing::info!(
+        "User {} upgraded to Pro (sub: {})",
+        user_id,
+        subscription_id
+    );
     Ok(())
 }
 
@@ -314,7 +389,11 @@ async fn handle_subscription_updated(
     let status = sub["status"].as_str().unwrap_or("");
 
     // active / trialing = pro; past_due / canceled / unpaid = free
-    let plan = if matches!(status, "active" | "trialing") { "pro" } else { "free" };
+    let plan = if matches!(status, "active" | "trialing") {
+        "pro"
+    } else {
+        "free"
+    };
 
     let current_period_end = sub["current_period_end"].as_i64();
     let expires_at = current_period_end
@@ -351,7 +430,10 @@ async fn handle_subscription_deleted(
     .await
     .map_err(|e| error_handling::handle_database_error(e))?;
 
-    tracing::info!("Subscription {} deleted, user downgraded to free", subscription_id);
+    tracing::info!(
+        "Subscription {} deleted, user downgraded to free",
+        subscription_id
+    );
     Ok(())
 }
 
@@ -375,7 +457,11 @@ async fn get_or_create_customer(
             return Ok(cid.clone());
         }
         // Customer not found in this Stripe environment — fall through to create a new one
-        tracing::warn!("Stripe customer {} not found, creating a new one for user {}", cid, user.id);
+        tracing::warn!(
+            "Stripe customer {} not found, creating a new one for user {}",
+            cid,
+            user.id
+        );
     }
 
     let client = reqwest::Client::new();
@@ -383,7 +469,10 @@ async fn get_or_create_customer(
     let user_id_str = user.id.to_string();
     let params = [
         ("email", email.as_str()),
-        ("name", user.display_name.as_deref().unwrap_or(&user.username)),
+        (
+            "name",
+            user.display_name.as_deref().unwrap_or(&user.username),
+        ),
         ("metadata[user_id]", user_id_str.as_str()),
     ];
 
@@ -397,17 +486,16 @@ async fn get_or_create_customer(
 
     let data: Value = resp.json().await.map_err(|e| e.to_string())?;
 
-    data["id"].as_str()
-        .map(|s| s.to_string())
-        .ok_or_else(|| data["error"]["message"].as_str().unwrap_or("Stripe error").to_string())
+    data["id"].as_str().map(|s| s.to_string()).ok_or_else(|| {
+        data["error"]["message"]
+            .as_str()
+            .unwrap_or("Stripe error")
+            .to_string()
+    })
 }
 
 #[allow(dead_code)]
-fn verify_stripe_signature(
-    payload: &[u8],
-    sig_header: &str,
-    secret: &str,
-) -> Result<(), String> {
+fn verify_stripe_signature(payload: &[u8], sig_header: &str, secret: &str) -> Result<(), String> {
     // Parse timestamp and signatures from header
     // Format: t=timestamp,v1=signature1,v1=signature2,...
     let mut timestamp = "";
@@ -426,7 +514,9 @@ fn verify_stripe_signature(
     }
 
     // Fix #8: Reject webhooks older than 300 seconds to prevent replay attacks
-    let ts: i64 = timestamp.parse().map_err(|_| "Invalid timestamp in signature".to_string())?;
+    let ts: i64 = timestamp
+        .parse()
+        .map_err(|_| "Invalid timestamp in signature".to_string())?;
     let now = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .unwrap_or_default()
