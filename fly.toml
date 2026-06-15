@@ -1,10 +1,10 @@
-# fly.toml app configuration file generated for codetrackr on 2026-05-05T02:25:42Z
+# fly.toml app configuration file generated for codetrackr on 2026-06-04T20:14:52Z
 #
 # See https://fly.io/docs/reference/configuration/ for information about how to use this file.
 #
 
 app = 'codetrackr'
-primary_region = 'arn'
+primary_region = 'ams'
 
 [build]
 
