@@ -20,7 +20,7 @@ pub async fn logout(
     if let Ok(claims) = verify_jwt(token, &state.config.jwt_secret) {
         let now = chrono::Utc::now().timestamp();
         let ttl = (claims.exp - now).max(1);
-        
+
         // Blacklist por jti en lugar del token completo
         let key = format!("jwt_blacklist:{}", claims.jti);
         if let Ok(mut conn) = state.redis.get_conn().await {
@@ -28,11 +28,11 @@ pub async fn logout(
                 .arg(&key)
                 .arg(ttl)
                 .arg("1")
-                .query_async(&mut conn)
+                .query_async::<_, ()>(&mut conn)
                 .await;
         }
     }
-    
+
     // Eliminar cookie JWT
     let response = Response::builder()
         .status(StatusCode::OK)
@@ -40,7 +40,7 @@ pub async fn logout(
         .header("Content-Type", "application/json")
         .body(json!({"message": "Logged out successfully"}).to_string().into())
         .map_err(|e| error_handling::handle_auth_error(e))?;
-    
+
     Ok(response)
 }
 
@@ -55,7 +55,7 @@ pub async fn list_refresh_tokens(
             tracing::error!("Failed to list refresh tokens: {}", e);
             (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": "Failed to list tokens"})))
         })?;
-    
+
     let tokens_json: Vec<serde_json::Value> = tokens.into_iter().map(|t| {
         json!({
             "id": t.id,
@@ -70,7 +70,7 @@ pub async fn list_refresh_tokens(
             "suspicious_activity": t.suspicious_activity
         })
     }).collect();
-    
+
     Ok(Json(json!({
         "tokens": tokens_json,
         "count": tokens_json.len()
@@ -98,7 +98,7 @@ pub async fn revoke_refresh_token(
     .ok_or_else(|| {
         (StatusCode::NOT_FOUND, Json(json!({"error": "Token not found"})))
     })?;
-    
+
     // Revocar el token
     sqlx::query(
         "UPDATE refresh_tokens SET is_active = false, rotated_at = NOW() WHERE id = $1"
@@ -110,7 +110,7 @@ pub async fn revoke_refresh_token(
         tracing::error!("Failed to revoke token: {}", e);
         (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": "Failed to revoke token"})))
     })?;
-    
+
     Ok(Json(json!({"message": "Token revoked successfully"})))
 }
 
@@ -138,7 +138,7 @@ pub async fn refresh_token(
     let user_agent = headers.get("user-agent")
         .and_then(|h| h.to_str().ok())
         .map(|s| s.to_string());
-    
+
     // Rotate refresh token with security checks
     let token_response = RefreshTokenService::rotate_token(
         &payload.refresh_token,
@@ -149,14 +149,14 @@ pub async fn refresh_token(
         tracing::warn!("Refresh token rotation failed: {}", e);
         (StatusCode::UNAUTHORIZED, Json(json!({"error": e})))
     })?;
-    
+
     // Get user_id from the rotated token
     let token_hash = RefreshTokenService::hash_token(&payload.refresh_token, &state.config.jwt_secret)
         .map_err(|e| {
             tracing::error!("Token hashing error: {}", e);
             (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": "Authentication failed"})))
         })?;
-    
+
     let old_token_row = sqlx::query(
         "SELECT user_id FROM refresh_tokens WHERE token_hash = $1"
     )
@@ -175,19 +175,19 @@ pub async fn refresh_token(
             tracing::error!("Failed to get user_id from token row: {}", e);
             (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": "Authentication failed"})))
         })?;
-    
+
     // Generate new access token
     let new_access_token = create_access_token(&old_token_user_id.to_string(), &state.config.jwt_secret)
         .map_err(|e| {
             tracing::error!("Access token creation failed: {}", e);
             (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": "Authentication failed"})))
         })?;
-    
+
     let response = Json(json!(RefreshResponse {
         access_token: new_access_token,
         refresh_token: token_response.refresh_token,
     }));
-    
+
     Ok(Response::builder()
         .status(StatusCode::OK)
         .header(header::CONTENT_TYPE, "application/json")
@@ -203,7 +203,7 @@ use chrono::Utc;
 
 pub fn create_jwt(user_id: &str, secret: &str, token_type: crate::models::TokenType, expires_in_seconds: i64) -> anyhow::Result<String> {
     use uuid::Uuid;
-    
+
     let now = Utc::now().timestamp();
     let claims = Claims {
         sub: user_id.to_string(),
@@ -280,7 +280,7 @@ impl FromRequestParts<AppState> for AuthenticatedUser {
                 let mut conn = state.redis.get_conn().await.ok()?;
                 let val: Option<String> = redis::cmd("GET")
                     .arg(&blacklist_key)
-                    .query_async(&mut conn)
+                    .query_async::<_, Option<String>>(&mut conn)
                     .await
                     .ok()?;
                 val
@@ -377,7 +377,7 @@ pub fn hash_api_key(_key: &str) -> String {
 pub fn hash_api_key_with_secret(key: &str, secret: &str) -> String {
     use hmac::{Hmac, Mac};
     use sha2::Sha256;
-    
+
     let mut mac = Hmac::<Sha256>::new_from_slice(secret.as_bytes())
         .expect("JWT_SECRET debe tener al menos 32 bytes para HMAC-SHA256");
     mac.update(key.as_bytes());

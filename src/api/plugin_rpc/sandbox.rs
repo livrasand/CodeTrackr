@@ -55,10 +55,10 @@ fn setup_quickjs_context(
             let pool = pool.clone();
             let plugin_id = plugin_id_for_func;
             let user_id = user_id_for_func;
-            
+
             // Crear oneshot channel para sincronización
             let (tx, rx) = tokio::sync::oneshot::channel::<Result<String, String>>();
-            
+
             // Spawn async task que use permisos declarativos
             let handle = tokio::runtime::Handle::current();
             handle.spawn(async move {
@@ -73,7 +73,7 @@ fn setup_quickjs_context(
                     }
                 }
             });
-            
+
             // Bloquear hasta recibir resultado (dentro del blocking thread)
             match handle.block_on(rx) {
                 Ok(Ok(result)) => result,
@@ -92,16 +92,16 @@ fn setup_quickjs_context(
         let func = rquickjs::Function::new(ctx_ref.clone(), move |key: String| -> String {
             let redis_ref = redis_ref.clone();
             let namespaced = plugin_redis_key(&pname, &uid, &key);
-            
+
             // Crear oneshot channel para sincronización
             let (tx, rx) = tokio::sync::oneshot::channel::<String>();
-            
+
             let handle = tokio::runtime::Handle::current();
             handle.spawn(async move {
                 if let Ok(mut conn) = redis_ref.get_conn().await {
                     let val: Option<String> = redis::cmd("GET")
                         .arg(&namespaced)
-                        .query_async(&mut conn)
+                        .query_async::<_, Option<String>>(&mut conn)
                         .await
                         .unwrap_or(None);
                     let result = match val {
@@ -113,7 +113,7 @@ fn setup_quickjs_context(
                     let _ = tx.send("null".to_string());
                 }
             });
-            
+
             // Bloquear hasta recibir resultado
             match handle.block_on(rx) {
                 Ok(result) => result,
@@ -131,15 +131,15 @@ fn setup_quickjs_context(
         let func = rquickjs::Function::new(ctx_ref.clone(), move |key: String, value: String| -> String {
             let redis_ref = redis_ref.clone();
             let namespaced = plugin_redis_key(&pname, &uid, &key);
-            
+
             let (tx, rx) = tokio::sync::oneshot::channel::<String>();
-            
+
             let handle = tokio::runtime::Handle::current();
             handle.spawn(async move {
                 if let Ok(mut conn) = redis_ref.get_conn().await {
                     let _: () = redis::cmd("SET")
                         .arg(&namespaced).arg(&value)
-                        .query_async(&mut conn)
+                        .query_async::<_, ()>(&mut conn)
                         .await
                         .unwrap_or(());
                     let _ = tx.send("\"ok\"".to_string());
@@ -147,7 +147,7 @@ fn setup_quickjs_context(
                     let _ = tx.send("\"error\"".to_string());
                 }
             });
-            
+
             match handle.block_on(rx) {
                 Ok(result) => result,
                 Err(_) => "\"error\"".to_string(),
@@ -164,23 +164,23 @@ fn setup_quickjs_context(
         let func = rquickjs::Function::new(ctx_ref.clone(), move |key: String| -> String {
             let redis_ref = redis_ref.clone();
             let namespaced = plugin_redis_key(&pname, &uid, &key);
-            
+
             let (tx, rx) = tokio::sync::oneshot::channel::<String>();
-            
+
             let handle = tokio::runtime::Handle::current();
             handle.spawn(async move {
                 if let Ok(mut conn) = redis_ref.get_conn().await {
-                    let _: () = redis::cmd("DEL")
+                    let _: i64 = redis::cmd("DEL")
                         .arg(&namespaced)
-                        .query_async(&mut conn)
+                        .query_async::<_, i64>(&mut conn)
                         .await
-                        .unwrap_or(());
+                        .unwrap_or(0);
                     let _ = tx.send("\"ok\"".to_string());
                 } else {
                     let _ = tx.send("\"error\"".to_string());
                 }
             });
-            
+
             match handle.block_on(rx) {
                 Ok(result) => result,
                 Err(_) => "\"error\"".to_string(),
@@ -197,9 +197,9 @@ fn setup_quickjs_context(
         let func = rquickjs::Function::new(ctx_ref.clone(), move |key: String| -> String {
             let redis_ref = redis_ref.clone();
             let namespaced = plugin_redis_key(&pname, &uid, &key);
-            
+
             let (tx, rx) = tokio::sync::oneshot::channel::<String>();
-            
+
             let handle = tokio::runtime::Handle::current();
             handle.spawn(async move {
                 if let Ok(mut conn) = redis_ref.get_conn().await {
@@ -213,7 +213,7 @@ fn setup_quickjs_context(
                     let _ = tx.send("0".to_string());
                 }
             });
-            
+
             match handle.block_on(rx) {
                 Ok(result) => result,
                 Err(_) => "0".to_string(),
@@ -431,21 +431,21 @@ const ctx = {{
     }}
   }},
   redis: {{
-    get:  function(key)        {{ 
+    get:  function(key)        {{
       const result = __redis_get(key);
-      return Promise.resolve(JSON.parse(result)); 
+      return Promise.resolve(JSON.parse(result));
     }},
-    set:  function(key, value) {{ 
+    set:  function(key, value) {{
       const result = __redis_set(key, JSON.stringify(value));
-      return Promise.resolve(); 
+      return Promise.resolve();
     }},
-    incr: function(key)        {{ 
+    incr: function(key)        {{
       const result = __redis_incr(key);
-      return Promise.resolve(parseInt(result)); 
+      return Promise.resolve(parseInt(result));
     }},
-    del:  function(key)        {{ 
+    del:  function(key)        {{
       const result = __redis_del(key);
-      return Promise.resolve(); 
+      return Promise.resolve();
     }}
   }},
   config: {{ base_url: "https://codetrackr.leapcell.app" }},
@@ -509,21 +509,21 @@ const ctx = {{
     }}
   }},
   redis: {{
-    get:  function(key)        {{ 
+    get:  function(key)        {{
       const result = __redis_get(key);
-      return Promise.resolve(JSON.parse(result)); 
+      return Promise.resolve(JSON.parse(result));
     }},
-    set:  function(key, value) {{ 
+    set:  function(key, value) {{
       const result = __redis_set(key, JSON.stringify(value));
-      return Promise.resolve(); 
+      return Promise.resolve();
     }},
-    incr: function(key)        {{ 
+    incr: function(key)        {{
       const result = __redis_incr(key);
-      return Promise.resolve(parseInt(result)); 
+      return Promise.resolve(parseInt(result));
     }},
-    del:  function(key)        {{ 
+    del:  function(key)        {{
       const result = __redis_del(key);
-      return Promise.resolve(); 
+      return Promise.resolve();
     }}
   }},
   config: {{ base_url: "https://codetrackr.leapcell.app" }},

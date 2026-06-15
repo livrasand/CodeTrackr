@@ -245,7 +245,7 @@ pub async fn github_callback(
             "created_at": chrono::Utc::now().to_rfc3339()
         })),
     };
-    
+
     let refresh_response = crate::services::refresh_tokens::RefreshTokenService::create_token(
         user.id,
         refresh_request,
@@ -260,13 +260,13 @@ pub async fn github_callback(
     // Generar código de un solo uso para canje seguro
     let exchange_code = Uuid::new_v4().to_string();
     let exchange_key = format!("auth_exchange:{}", exchange_code);
-    
+
     // Almacenar ambos tokens en Redis por 5 minutos (300 segundos)
     let token_data = json!({
         "access_token": access_token,
         "refresh_token": refresh_response.refresh_token
     });
-    
+
     let exchange_stored = match state.redis.get_conn().await {
         Ok(mut conn) => {
             let result: Result<(), redis::RedisError> =             match redis::cmd("SETEX")
@@ -334,7 +334,7 @@ pub async fn exchange_code(
     Json(payload): Json<ExchangeRequest>,
 ) -> Result<Response, (StatusCode, Json<serde_json::Value>)> {
     let exchange_key = format!("auth_exchange:{}", payload.code);
-    
+
     // Obtener token data de Redis, con fallback a memoria
     let token_data_str = match state.redis.get_conn().await {
         Ok(mut conn) => {
@@ -349,7 +349,7 @@ pub async fn exchange_code(
                     match redis::cmd("GET")
                         .arg(&exchange_key)
                         .query_async::<_, Option<String>>(&mut conn)
-                        .await 
+                        .await
                     {
                         Ok(val) => val,
                         Err(e2) => {
@@ -362,9 +362,9 @@ pub async fn exchange_code(
 
             if data.is_some() {
                 // Eliminar el código después de usarlo (single-use)
-                let _: Result<(), _> = redis::cmd("DEL")
+                let _: Result<i64, _> = redis::cmd("DEL")
                     .arg(&exchange_key)
-                    .query_async(&mut conn)
+                    .query_async::<_, i64>(&mut conn)
                     .await;
             } else {
                 tracing::warn!("Exchange code not found in Redis, checking in-memory fallback");
@@ -409,7 +409,7 @@ pub async fn exchange_code(
         .header(header::SET_COOKIE, cookie_value)
         .header(header::CONTENT_TYPE, "application/json")
         .body(json!({
-            "success": true, 
+            "success": true,
             "access_token": access_token,
             "refresh_token": refresh_token
         }).to_string().into())

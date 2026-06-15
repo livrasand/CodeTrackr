@@ -1,20 +1,17 @@
-use axum::{
-    extract::State,
-    response::Json,
-    http::StatusCode,
-};
+use axum::{extract::State, http::StatusCode, response::Json};
+use chrono::Utc;
 use serde_json::json;
 use uuid::Uuid;
-use chrono::Utc;
 
-use crate::{AppState, auth::AuthenticatedUser, models::*, error_handling};
+use crate::{auth::AuthenticatedUser, error_handling, models::*, AppState};
 
 pub async fn create_heartbeat(
     AuthenticatedUser(user): AuthenticatedUser,
     State(state): State<AppState>,
     axum::Json(body): axum::Json<HeartbeatRequest>,
 ) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
-    let recorded_at = body.time
+    let recorded_at = body
+        .time
         .and_then(|t| DateTime::from_timestamp(t as i64, 0))
         .unwrap_or_else(Utc::now);
 
@@ -25,14 +22,19 @@ pub async fn create_heartbeat(
     let (file, branch, commit, machine) = if is_anonymous {
         (None, None, None, None)
     } else {
-        (body.file.as_deref(), body.branch.as_deref(), body.commit.as_deref(), body.machine.as_deref())
+        (
+            body.file.as_deref(),
+            body.branch.as_deref(),
+            body.commit.as_deref(),
+            body.machine.as_deref(),
+        )
     };
 
     sqlx::query(
         r#"INSERT INTO heartbeats
            (id, user_id, project, file, language, branch, commit, workspace_root, package_path,
             duration_seconds, is_write, editor, os, machine, recorded_at, created_at)
-           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,NOW())"#
+           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,NOW())"#,
     )
     .bind(Uuid::new_v4())
     .bind(user.id)
@@ -70,7 +72,8 @@ pub async fn create_heartbeat(
         "machine": machine,
         "recorded_at": recorded_at
     });
-    crate::api::plugin_rpc::execute_lifecycle_hooks(&user.id, "on_heartbeat", event_data, &state).await;
+    crate::api::plugin_rpc::execute_lifecycle_hooks(&user.id, "on_heartbeat", event_data, &state)
+        .await;
 
     // Publish real-time update via broadcast channel (forwarded by Redis subscriber to WS clients)
     let update = json!({
@@ -88,7 +91,11 @@ pub async fn create_heartbeat(
         let lang_key = body.language.as_ref().and_then(|lang| {
             // Validate language contains only alphanumeric characters
             if lang.chars().all(|c| c.is_alphanumeric()) {
-                Some(format!("lb:lang:{}:{}", lang.to_lowercase(), chrono::Utc::now().format("%Y-W%W")))
+                Some(format!(
+                    "lb:lang:{}:{}",
+                    lang.to_lowercase(),
+                    chrono::Utc::now().format("%Y-W%W")
+                ))
             } else {
                 None
             }
@@ -99,7 +106,7 @@ pub async fn create_heartbeat(
                 .arg(&week_key)
                 .arg(duration as i64)
                 .arg(user.id.to_string())
-                .query_async(&mut conn)
+                .query_async::<_, ()>(&mut conn)
                 .await;
 
             if let Some(lk) = lang_key {
@@ -107,7 +114,7 @@ pub async fn create_heartbeat(
                     .arg(&lk)
                     .arg(duration as i64)
                     .arg(user.id.to_string())
-                    .query_async(&mut conn)
+                    .query_async::<_, ()>(&mut conn)
                     .await;
             }
         }
@@ -122,19 +129,25 @@ pub async fn create_heartbeats_bulk(
     axum::Json(bodies): axum::Json<Vec<HeartbeatRequest>>,
 ) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
     let mut inserted = 0usize;
-    
+
     // Check if user is anonymous and scrub identifying metadata
     let is_anonymous = user.account_number.is_some();
 
     for body in &bodies {
-        let recorded_at = body.time
+        let recorded_at = body
+            .time
             .and_then(|t| DateTime::from_timestamp(t as i64, 0))
             .unwrap_or_else(Utc::now);
 
         let (file, branch, commit, machine) = if is_anonymous {
             (None, None, None, None)
         } else {
-            (body.file.as_deref(), body.branch.as_deref(), body.commit.as_deref(), body.machine.as_deref())
+            (
+                body.file.as_deref(),
+                body.branch.as_deref(),
+                body.commit.as_deref(),
+                body.machine.as_deref(),
+            )
         };
 
         if let Ok(result) = sqlx::query(
@@ -142,7 +155,7 @@ pub async fn create_heartbeats_bulk(
                (id, user_id, project, file, language, branch, commit, workspace_root, package_path,
                 duration_seconds, is_write, editor, os, machine, recorded_at, created_at)
                VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,NOW())
-               ON CONFLICT DO NOTHING"#
+               ON CONFLICT DO NOTHING"#,
         )
         .bind(Uuid::new_v4())
         .bind(user.id)
@@ -174,7 +187,13 @@ pub async fn create_heartbeats_bulk(
         "count": inserted,
         "total_requested": bodies.len()
     });
-    crate::api::plugin_rpc::execute_lifecycle_hooks(&user.id, "on_heartbeats_bulk", event_data, &state).await;
+    crate::api::plugin_rpc::execute_lifecycle_hooks(
+        &user.id,
+        "on_heartbeats_bulk",
+        event_data,
+        &state,
+    )
+    .await;
 
     Ok(Json(json!({"status": "ok", "inserted": inserted})))
 }
