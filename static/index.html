@@ -3,10 +3,10 @@
     <head>
         <meta charset="UTF-8" />
         <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-        <title>CodeTrackr — Code Time Tracking</title>
+        <title>CodeTrackr — Open Source Coding Analytics for Developers</title>
         <meta
             name="description"
-            content="Minimalist code time tracking for developers."
+            content="Open-source coding analytics and time tracking for developers using VS Code, Cursor, Windsurf, JetBrains, and more. Privacy-first, self-hosted, and extensible with plugins and themes."
         />
         <link rel="icon" type="image/png" href="/static/images/logo.png" />
         <link rel="stylesheet" href="/static/css/main.css" />
@@ -83,63 +83,157 @@
             </div>
         </nav>
 
-        <!-- HERO / LOGIN -->
+        <!-- HERO -->
         <section class="hero" id="hero">
             <div class="container">
-                <div class="login-box">
+                <div style="max-width: 640px; margin: 0 auto">
                     <div class="hero-logo-big">CodeTrackr</div>
-                    <p class="hero-desc">
-                        Please sign in to your account or
-                        <strong>Register</strong>
+                    <p
+                        style="
+                            font-size: 16px;
+                            color: var(--text-muted);
+                            line-height: 1.6;
+                            margin-bottom: 8px;
+                            max-width: 540px;
+                            margin-left: auto;
+                            margin-right: auto;
+                        "
+                    >
+                        Open-source coding analytics and time tracking for
+                        developers using VS Code, Cursor, Windsurf, JetBrains,
+                        and more.
                     </p>
-                    <div class="login-actions">
-                        <a href="/auth/github" class="btn">
-                            <span class="key-hint">H</span> Github
-                        </a>
-                        <a href="/auth/gitlab" class="btn">
-                            <span class="key-hint">L</span> Gitlab
-                        </a>
-                        <button
+                    <p
+                        style="
+                            font-size: 13px;
+                            color: var(--text-dark);
+                            margin-bottom: 28px;
+                        "
+                    >
+                        Privacy-first. Self-hosted. Built for developers who own
+                        their data.
+                    </p>
+                    <div
+                        style="
+                            display: flex;
+                            gap: 10px;
+                            justify-content: center;
+                            flex-wrap: wrap;
+                        "
+                    >
+                        <a
+                            href="#extensions"
                             class="btn"
-                            onclick="showAnonymousAuth()"
                             style="
-                                background: var(--bg);
-                                color: var(--text-main);
-                                border: 1px solid var(--border);
-                                position: relative;
+                                background: var(--accent);
+                                color: #fff;
+                                border-color: var(--accent);
                             "
+                            >Get the Extension</a
                         >
-                            <span class="key-hint">A</span> Anonymous
-                            <span
+                        <a href="#stats" class="btn">Try Live Demo</a>
+                    </div>
+                    <div class="login-box" style="margin-top: 48px">
+                        <p class="hero-desc" style="margin-bottom: 16px">
+                            Sign in to start tracking:
+                        </p>
+                        <div class="login-actions">
+                            <a
+                                href="/auth/github"
+                                class="btn"
                                 style="
-                                    position: absolute;
-                                    top: -8px;
-                                    right: -8px;
                                     background: var(--accent);
                                     color: #fff;
-                                    font-size: 9px;
-                                    font-weight: 700;
-                                    padding: 1px 5px;
-                                    border-radius: 20px;
-                                    letter-spacing: 0.04em;
-                                    pointer-events: none;
+                                    border-color: var(--accent);
                                 "
-                                >Recommended</span
                             >
-                        </button>
+                                <span class="key-hint">H</span> Continue with
+                                GitHub
+                            </a>
+                            <div
+                                style="
+                                    width: 100%;
+                                    text-align: center;
+                                    margin-top: 8px;
+                                    font-size: 11px;
+                                    color: var(--text-dark);
+                                "
+                            >
+                                or
+                                <a
+                                    href="/auth/gitlab"
+                                    style="
+                                        color: var(--text-dark);
+                                        text-decoration: underline;
+                                    "
+                                    >GitLab</a
+                                >
+                                ·
+                                <button
+                                    onclick="showAnonymousAuth()"
+                                    style="
+                                        background: none;
+                                        border: none;
+                                        color: var(--text-dark);
+                                        text-decoration: underline;
+                                        cursor: pointer;
+                                        font-family: inherit;
+                                        font-size: 11px;
+                                        padding: 0;
+                                    "
+                                >
+                                    Anonymous
+                                </button>
+                            </div>
+                        </div>
                     </div>
                 </div>
             </div>
         </section>
 
+        <!-- TRUST BAR -->
+        <div
+            id="trust-bar"
+            style="
+                padding: 20px 0;
+                border-bottom: 1px solid var(--border);
+                text-align: center;
+                font-size: 12px;
+                color: var(--text-dark);
+            "
+        >
+            <div class="container">
+                <p
+                    style="
+                        margin: 0 0 8px;
+                        font-size: 13px;
+                        color: var(--text-muted);
+                    "
+                >
+                    No tracking of code. No lock-in. No vendor control.
+                </p>
+                <span
+                    style="
+                        display: inline-flex;
+                        gap: 24px;
+                        flex-wrap: wrap;
+                        justify-content: center;
+                        font-size: 11px;
+                    "
+                >
+                    <span>Open-source alternative to WakaTime</span>
+                </span>
+            </div>
+        </div>
+
         <!-- EXTENSIONS -->
         <section class="section" id="extensions">
             <div class="container">
                 <div class="section-header">
-                    <h2 class="section-title">Get the Extension</h2>
+                    <h2 class="section-title">Start tracking in 30 seconds</h2>
                     <p class="section-desc">
-                        Install CodeTrackr in your editor and start tracking
-                        automatically.
+                        Sign in, install the extension, paste your API key —
+                        done.
                     </p>
                 </div>
                 <div class="grid-3">
@@ -170,7 +264,7 @@
                                 ></path>
                             </svg>
                             <h3 style="margin: 0; font-size: 14px">
-                                Get it on:
+                                1. Install the extension
                             </h3>
                         </div>
                         <img
@@ -211,7 +305,7 @@
                                 ></path>
                             </svg>
                             <h3 style="margin: 0; font-size: 14px">
-                                Any Editor:
+                                Works in any editor
                             </h3>
                         </div>
                         <img
@@ -309,7 +403,7 @@
                                 ></path>
                             </svg>
                             <h3 style="margin: 0; font-size: 14px">
-                                Setup in 3 steps
+                                2. Paste your API key
                             </h3>
                         </div>
                         <ol
@@ -337,6 +431,192 @@
             </div>
         </section>
 
+        <!-- WHY START NOW -->
+        <div
+            id="why-start"
+            style="
+                border-bottom: 1px solid var(--border);
+                padding: 32px 0;
+                text-align: center;
+            "
+        >
+            <div class="container">
+                <h3
+                    style="
+                        font-size: 14px;
+                        color: var(--text-main);
+                        font-family: var(--font-mono);
+                        font-weight: 500;
+                        margin-bottom: 12px;
+                    "
+                >
+                    Start tracking in under a minute
+                </h3>
+                <div
+                    style="
+                        display: flex;
+                        gap: 24px;
+                        justify-content: center;
+                        flex-wrap: wrap;
+                        font-size: 12px;
+                        color: var(--text-dark);
+                    "
+                >
+                    <span>No setup complexity</span>
+                    <span>No configuration overhead</span>
+                    <span>No vendor lock-in</span>
+                </div>
+            </div>
+        </div>
+
+        <!-- VALUE DEMO -->
+        <section class="section" id="value-demo">
+            <div class="container">
+                <div class="section-header">
+                    <h2 class="section-title">What you get instantly</h2>
+                    <p class="section-desc">
+                        Real results from the moment you paste your API key.
+                    </p>
+                </div>
+                <div
+                    style="
+                        display: grid;
+                        grid-template-columns: repeat(
+                            auto-fit,
+                            minmax(150px, 1fr)
+                        );
+                        gap: 12px;
+                    "
+                >
+                    <div
+                        class="card"
+                        style="
+                            text-align: center;
+                            padding: 24px 16px;
+                            position: relative;
+                            overflow: hidden;
+                        "
+                    >
+                        <div
+                            style="
+                                font-size: 11px;
+                                color: var(--accent);
+                                font-family: var(--font-mono);
+                                text-transform: uppercase;
+                                letter-spacing: 0.08em;
+                                margin-bottom: 8px;
+                            "
+                        >
+                            Real-time
+                        </div>
+                        <div style="font-size: 12px; color: var(--text-muted)">
+                            Coding time tracking
+                        </div>
+                    </div>
+                    <div
+                        class="card"
+                        style="
+                            text-align: center;
+                            padding: 24px 16px;
+                            position: relative;
+                            overflow: hidden;
+                        "
+                    >
+                        <div
+                            style="
+                                font-size: 11px;
+                                color: var(--accent);
+                                font-family: var(--font-mono);
+                                text-transform: uppercase;
+                                letter-spacing: 0.08em;
+                                margin-bottom: 8px;
+                            "
+                        >
+                            Automatic
+                        </div>
+                        <div style="font-size: 12px; color: var(--text-muted)">
+                            Language breakdown
+                        </div>
+                    </div>
+                    <div
+                        class="card"
+                        style="
+                            text-align: center;
+                            padding: 24px 16px;
+                            position: relative;
+                            overflow: hidden;
+                        "
+                    >
+                        <div
+                            style="
+                                font-size: 11px;
+                                color: var(--accent);
+                                font-family: var(--font-mono);
+                                text-transform: uppercase;
+                                letter-spacing: 0.08em;
+                                margin-bottom: 8px;
+                            "
+                        >
+                            Per Project
+                        </div>
+                        <div style="font-size: 12px; color: var(--text-muted)">
+                            Project &amp; editor insights
+                        </div>
+                    </div>
+                    <div
+                        class="card"
+                        style="
+                            text-align: center;
+                            padding: 24px 16px;
+                            position: relative;
+                            overflow: hidden;
+                        "
+                    >
+                        <div
+                            style="
+                                font-size: 11px;
+                                color: var(--accent);
+                                font-family: var(--font-mono);
+                                text-transform: uppercase;
+                                letter-spacing: 0.08em;
+                                margin-bottom: 8px;
+                            "
+                        >
+                            Dashboard
+                        </div>
+                        <div style="font-size: 12px; color: var(--text-muted)">
+                            Real-time analytics
+                        </div>
+                    </div>
+                    <div
+                        class="card"
+                        style="
+                            text-align: center;
+                            padding: 24px 16px;
+                            position: relative;
+                            overflow: hidden;
+                        "
+                    >
+                        <div
+                            style="
+                                font-size: 11px;
+                                color: var(--accent);
+                                font-family: var(--font-mono);
+                                text-transform: uppercase;
+                                letter-spacing: 0.08em;
+                                margin-bottom: 8px;
+                            "
+                        >
+                            Leaderboard
+                        </div>
+                        <div style="font-size: 12px; color: var(--text-muted)">
+                            Compete with devs worldwide
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
         <!-- STATS / OVERVIEW -->
         <section class="section" id="stats">
             <div class="container">
@@ -346,20 +626,20 @@
                 </div>
                 <div class="grid-3">
                     <div class="card">
-                        <h3>Users Tracked</h3>
+                        <h3>Active Developers</h3>
                         <p id="stat-devs" style="color: var(--text-muted)">
                             Loading live data...
                         </p>
                     </div>
                     <div class="card">
-                        <h3>Total Time</h3>
+                        <h3>Total Coding Time</h3>
                         <p id="stat-hours" style="color: var(--text-muted)">
                             Loading live data...
                         </p>
                     </div>
                     <div class="card">
-                        <h3>Open Source</h3>
-                        <p>Self-hostable privacy-first tracking</p>
+                        <h3>Self-Hosted Ready</h3>
+                        <p>Deploy on your own infrastructure</p>
                         <code>docker compose up -d</code>
                     </div>
                 </div>
@@ -446,7 +726,8 @@
                                         opacity: 0.5;
                                     "
                                 >
-                                    Loading live leaderboard...
+                                    No data yet — be the first developer on the
+                                    leaderboard
                                 </td>
                             </tr>
                         </tbody>
@@ -461,7 +742,7 @@
                 <div class="section-header">
                     <h2 class="section-title">Features</h2>
                     <p class="section-desc">
-                        Complete coding time tracking, and more.
+                        Everything you need to understand your coding life.
                     </p>
                 </div>
                 <div class="grid-3">
@@ -538,33 +819,6 @@
                                     stroke-linecap="round"
                                     stroke-linejoin="round"
                                     stroke-width="2"
-                                    d="M9 12l2 2 4-4M7.835 4.697a3.42 3.42 0 001.946-.806 3.42 3.42 0 014.438 0 3.42 3.42 0 001.946.806 3.42 3.42 0 013.138 3.138 3.42 3.42 0 00.806 1.946 3.42 3.42 0 010 4.438 3.42 3.42 0 00-.806 1.946 3.42 3.42 0 01-3.138 3.138 3.42 3.42 0 00-1.946.806 3.42 3.42 0 01-4.438 0 3.42 3.42 0 00-1.946-.806 3.42 3.42 0 01-3.138-3.138 3.42 3.42 0 00-.806-1.946 3.42 3.42 0 010-4.438 3.42 3.42 0 00.806-1.946 3.42 3.42 0 013.138-3.138z"
-                                ></path></svg
-                            >Leaderboards
-                        </h3>
-                        <p>
-                            Top developers by language globally. Updated live
-                            via Redis.
-                        </p>
-                    </div>
-                    <div class="card">
-                        <h3>
-                            <svg
-                                class="w-5 h-5 inline mr-2"
-                                style="
-                                    width: 16px;
-                                    height: 16px;
-                                    margin-right: 5px;
-                                    vertical-align: text-bottom;
-                                "
-                                fill="none"
-                                stroke="currentColor"
-                                viewBox="0 0 24 24"
-                            >
-                                <path
-                                    stroke-linecap="round"
-                                    stroke-linejoin="round"
-                                    stroke-width="2"
                                     d="M11 4a2 2 0 114 0v1a1 1 0 001 1h3a1 1 0 011 1v3a1 1 0 01-1 1h-1a2 2 0 100 4h1a1 1 0 011 1v3a1 1 0 01-1 1h-3a1 1 0 01-1-1v-1a2 2 0 10-4 0v1a1 1 0 01-1 1H7a1 1 0 01-1-1v-3a1 1 0 00-1-1H4a2 2 0 110-4h1a1 1 0 001-1V7a1 1 0 011-1h3a1 1 0 001-1V4z"
                                 ></path></svg
                             >Build Your Own Plugin
@@ -618,6 +872,33 @@
                             style="font-size: 12px; color: var(--text-dark)"
                             >See the API →</a
                         >
+                    </div>
+                    <div class="card">
+                        <h3>
+                            <svg
+                                class="w-5 h-5 inline mr-2"
+                                style="
+                                    width: 16px;
+                                    height: 16px;
+                                    margin-right: 5px;
+                                    vertical-align: text-bottom;
+                                "
+                                fill="none"
+                                stroke="currentColor"
+                                viewBox="0 0 24 24"
+                            >
+                                <path
+                                    stroke-linecap="round"
+                                    stroke-linejoin="round"
+                                    stroke-width="2"
+                                    d="M9 12l2 2 4-4M7.835 4.697a3.42 3.42 0 001.946-.806 3.42 3.42 0 014.438 0 3.42 3.42 0 001.946.806 3.42 3.42 0 013.138 3.138 3.42 3.42 0 00.806 1.946 3.42 3.42 0 010 4.438 3.42 3.42 0 00-.806 1.946 3.42 3.42 0 01-3.138 3.138 3.42 3.42 0 00-1.946.806 3.42 3.42 0 01-4.438 0 3.42 3.42 0 00-1.946-.806 3.42 3.42 0 01-3.138-3.138 3.42 3.42 0 00-.806-1.946 3.42 3.42 0 010-4.438 3.42 3.42 0 00.806-1.946 3.42 3.42 0 013.138-3.138z"
+                                ></path></svg
+                            >Leaderboards
+                        </h3>
+                        <p>
+                            Top developers by language globally. Updated live
+                            via Redis.
+                        </p>
                     </div>
                     <div class="card">
                         <h3>
@@ -714,146 +995,11 @@
                                 margin: 0;
                             "
                         >
-                            Write a plain JavaScript snippet that receives a
-                            <code>container</code> DOM element and your
-                            <code>token</code>. Fetch any CodeTrackr API
-                            endpoint, render charts, tables, or counters — and
-                            publish it to the Plugin Store so anyone can install
-                            it on their dashboard with one click.
+                            Build custom dashboards with plain JavaScript. No
+                            backend required. Write a snippet, publish to the
+                            Plugin Store, and anyone can install it with one
+                            click.
                         </p>
-                        <div
-                            style="
-                                display: flex;
-                                flex-direction: column;
-                                gap: 6px;
-                            "
-                        >
-                            <div
-                                style="
-                                    font-size: 11px;
-                                    color: var(--text-dark);
-                                    text-transform: uppercase;
-                                    letter-spacing: 0.05em;
-                                "
-                            >
-                                What you can build
-                            </div>
-                            <div
-                                style="display: flex; flex-wrap: wrap; gap: 6px"
-                            >
-                                <span class="key-hint" style="font-size: 11px"
-                                    ><svg
-                                        style="
-                                            width: 12px;
-                                            height: 12px;
-                                            margin-right: 2px;
-                                            vertical-align: text-bottom;
-                                        "
-                                        fill="none"
-                                        stroke="currentColor"
-                                        viewBox="0 0 24 24"
-                                    >
-                                        <path
-                                            stroke-linecap="round"
-                                            stroke-linejoin="round"
-                                            stroke-width="2"
-                                            d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"
-                                        ></path>
-                                    </svg>
-                                    Custom charts</span
-                                >
-                                <span class="key-hint" style="font-size: 11px"
-                                    ><svg
-                                        style="
-                                            width: 12px;
-                                            height: 12px;
-                                            margin-right: 2px;
-                                            vertical-align: text-bottom;
-                                        "
-                                        fill="none"
-                                        stroke="currentColor"
-                                        viewBox="0 0 24 24"
-                                    >
-                                        <path
-                                            stroke-linecap="round"
-                                            stroke-linejoin="round"
-                                            stroke-width="2"
-                                            d="M17.657 18.657A8 8 0 016.343 7.343S7 9 9 10c0-2 .5-5 2.986-7C14 5 16.09 5.777 17.656 7.343A7.975 7.975 0 0120 13a7.975 7.975 0 01-2.343 5.657z"
-                                        ></path>
-                                        <path
-                                            stroke-linecap="round"
-                                            stroke-linejoin="round"
-                                            stroke-width="2"
-                                            d="M9.879 16.121A3 3 0 1012.015 11L11 14H9c0 .768.293 1.536.879 2.121z"
-                                        ></path>
-                                    </svg>
-                                    Streak widgets</span
-                                >
-                                <span class="key-hint" style="font-size: 11px"
-                                    ><svg
-                                        style="
-                                            width: 12px;
-                                            height: 12px;
-                                            margin-right: 2px;
-                                            vertical-align: text-bottom;
-                                        "
-                                        fill="none"
-                                        stroke="currentColor"
-                                        viewBox="0 0 24 24"
-                                    >
-                                        <path
-                                            stroke-linecap="round"
-                                            stroke-linejoin="round"
-                                            stroke-width="2"
-                                            d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z"
-                                        ></path>
-                                    </svg>
-                                    Project trackers</span
-                                >
-                                <span class="key-hint" style="font-size: 11px"
-                                    ><svg
-                                        style="
-                                            width: 12px;
-                                            height: 12px;
-                                            margin-right: 2px;
-                                            vertical-align: text-bottom;
-                                        "
-                                        fill="none"
-                                        stroke="currentColor"
-                                        viewBox="0 0 24 24"
-                                    >
-                                        <path
-                                            stroke-linecap="round"
-                                            stroke-linejoin="round"
-                                            stroke-width="2"
-                                            d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"
-                                        ></path>
-                                    </svg>
-                                    Goal timers</span
-                                >
-                                <span class="key-hint" style="font-size: 11px"
-                                    ><svg
-                                        style="
-                                            width: 12px;
-                                            height: 12px;
-                                            margin-right: 2px;
-                                            vertical-align: text-bottom;
-                                        "
-                                        fill="none"
-                                        stroke="currentColor"
-                                        viewBox="0 0 24 24"
-                                    >
-                                        <path
-                                            stroke-linecap="round"
-                                            stroke-linejoin="round"
-                                            stroke-width="2"
-                                            d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z"
-                                        ></path>
-                                    </svg>
-                                    Team boards</span
-                                >
-                            </div>
-                        </div>
                         <div style="display: flex; gap: 8px; margin-top: auto">
                             <a
                                 href="/docs#widget-plugins"
@@ -921,12 +1067,9 @@
                                 margin: 0;
                             "
                         >
-                            The CodeTrackr API uses a simple heartbeat format.
-                            If your editor can make an HTTP POST, it can send
-                            heartbeats. Build an extension for VS Code, Neovim,
-                            IntelliJ, Zed, Emacs, Helix — or any tool you use —
-                            and track your activity without changing anything
-                            else.
+                            Works with any editor that can send HTTP requests.
+                            VS Code, JetBrains, Vim, Neovim, Cursor, Windsurf,
+                            Zed, Emacs, Helix — and more.
                         </p>
                         <div
                             style="
@@ -1158,74 +1301,6 @@ X-API-Key: ct_your_key
                             style="font-size: 12px; padding: 4px 12px"
                             >Plugin Store</a
                         >
-                        <span
-                            id="dash-pro-badge"
-                            style="
-                                display: none;
-                                font-size: 11px;
-                                color: var(--text-dark);
-                            "
-                            class="key-hint"
-                            ><svg
-                                style="
-                                    width: 10px;
-                                    height: 10px;
-                                    vertical-align: text-bottom;
-                                "
-                                fill="currentColor"
-                                viewBox="0 0 24 24"
-                            >
-                                <path
-                                    d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"
-                                ></path>
-                            </svg>
-                            Pro</span
-                        >
-                        <div
-                            id="btn-upgrade-pro"
-                            style="display: none; position: relative"
-                            class="auth-dropdown-wrap"
-                        >
-                            <button
-                                class="key-hint"
-                                style="
-                                    font-size: 12px;
-                                    padding: 4px 12px;
-                                    cursor: pointer;
-                                "
-                                onclick="toggleAuthDropdown(this)"
-                            >
-                                ★ Upgrade to Pro ▾
-                            </button>
-                            <div
-                                class="auth-dropdown"
-                                style="
-                                    display: none;
-                                    position: absolute;
-                                    top: calc(100% + 6px);
-                                    right: 0;
-                                    min-width: 160px;
-                                    background: var(--bg-card);
-                                    border: 1px solid var(--border);
-                                    border-radius: var(--radius-sm);
-                                    z-index: 100;
-                                    overflow: hidden;
-                                "
-                            >
-                                <button
-                                    class="auth-dropdown-item"
-                                    onclick="startCheckoutPlan('monthly', this)"
-                                >
-                                    Monthly — $2/mo
-                                </button>
-                                <button
-                                    class="auth-dropdown-item"
-                                    onclick="startCheckoutPlan('yearly', this)"
-                                >
-                                    Yearly — $12/yr
-                                </button>
-                            </div>
-                        </div>
                         <button
                             class="btn"
                             onclick="logout()"
@@ -2370,11 +2445,58 @@ X-API-Key: ct_your_key
             </div>
         </section>
 
+        <!-- FINAL CTA -->
+        <section
+            class="section"
+            style="
+                text-align: center;
+                padding: 80px 0;
+                border-bottom: 1px solid var(--border);
+            "
+        >
+            <div class="container">
+                <h2
+                    style="
+                        font-size: 24px;
+                        color: var(--text-main);
+                        font-family: var(--font-mono);
+                        font-weight: 500;
+                        letter-spacing: 0.05em;
+                        text-transform: uppercase;
+                        margin-bottom: 8px;
+                    "
+                >
+                    Start tracking your coding time today
+                </h2>
+                <p
+                    style="
+                        font-size: 13px;
+                        color: var(--text-dark);
+                        margin-bottom: 24px;
+                    "
+                >
+                    Open-source. Privacy-first. Self-hosted.
+                </p>
+                <a
+                    href="#extensions"
+                    class="btn"
+                    style="
+                        background: var(--accent);
+                        color: #fff;
+                        border-color: var(--accent);
+                        font-size: 14px;
+                        padding: 10px 24px;
+                    "
+                    >Get the Extension</a
+                >
+            </div>
+        </section>
+
         <!-- FOOTER -->
         <footer class="footer">
             <div class="container footer-inner">
                 <span
-                    >CodeTrackr · Deployed on Leapcell · Powered by Rust · Open
+                    >CodeTrackr · Deployed on Fly · Powered by Rust · Open
                     source (AGPL-3.0) · Livrädo Sandoval.</span
                 >
                 <div class="footer-links">

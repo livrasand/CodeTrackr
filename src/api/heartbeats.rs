@@ -85,7 +85,6 @@ pub async fn create_heartbeat(
     });
     crate::realtime::ws_handler::publish(update.to_string());
 
-    // Also publish to Redis (only using ZINCRBY for leaderboards since Leapcell Serverless Redis disables PUBLISH/SUBSCRIBE)
     {
         let week_key = format!("lb:week:{}", chrono::Utc::now().format("%Y-W%W"));
         let lang_key = body.language.as_ref().and_then(|lang| {

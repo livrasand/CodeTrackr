@@ -1,17 +1,9 @@
 //! Database connection pool and migration runner.
 //!
 //! This module exposes [`Database`], a thin wrapper around a `sqlx` [`PgPool`] that
-//! also manages schema migrations. Migrations are stored as `.sql` files under
-//! `./migrations/` and are applied manually (without advisory locks) to stay within
-//! Leapcell's `statement_timeout` constraints.
-//!
-//! # Dollar-quote helpers
-//! [`find_dollar_quote_end`] and the internal [`split_sql_statements`] handle
-//! PostgreSQL dollar-quoted string literals (`$$...$$`, `$tag$...$tag$`) so that
-//! semicolons inside function bodies are not treated as statement separators.
 
-use sqlx::{PgPool, postgres::PgPoolOptions};
 use anyhow::Result;
+use sqlx::{postgres::PgPoolOptions, PgPool};
 
 /// Encuentra el closing tag correspondiente para un dollar-quote PostgreSQL.
 /// Retorna la posición después del closing tag, o None si no se encuentra.
@@ -19,11 +11,11 @@ pub fn find_dollar_quote_end(sql: &str, start_pos: usize) -> Option<usize> {
     let bytes = sql.as_bytes();
     let len = bytes.len();
     let i = start_pos;
-    
+
     if i >= len || bytes[i] != b'$' {
         return None;
     }
-    
+
     // Look for a dollar-quote tag: $[optional_tag]$
     let mut j = i + 1;
     while j < len && (bytes[j].is_ascii_alphanumeric() || bytes[j] == b'_') {
@@ -140,7 +132,7 @@ impl Database {
                 success        BOOLEAN NOT NULL DEFAULT false,
                 checksum       BYTEA NOT NULL,
                 execution_time BIGINT NOT NULL DEFAULT 0
-            )"#
+            )"#,
         )
         .execute(&self.pool)
         .await
@@ -150,12 +142,11 @@ impl Database {
         let migrator = migrator_base.set_ignore_missing(true);
 
         // Check pending migrations without acquiring a lock
-        let applied: Vec<(i64,)> = sqlx::query_as(
-            "SELECT version FROM _sqlx_migrations WHERE success = true"
-        )
-        .fetch_all(&self.pool)
-        .await
-        .unwrap_or_default();
+        let applied: Vec<(i64,)> =
+            sqlx::query_as("SELECT version FROM _sqlx_migrations WHERE success = true")
+                .fetch_all(&self.pool)
+                .await
+                .unwrap_or_default();
 
         let applied_versions: std::collections::HashSet<i64> =
             applied.into_iter().map(|(v,)| v).collect();
@@ -175,7 +166,11 @@ impl Database {
             if applied_versions.contains(&migration.version) {
                 continue;
             }
-            tracing::info!("Applying migration {}: {}...", migration.version, migration.description);
+            tracing::info!(
+                "Applying migration {}: {}...",
+                migration.version,
+                migration.description
+            );
             let sql: &str = migration.sql.as_ref();
             // Execute each statement individually to stay under the statement_timeout.
             // Split on ';' but ignore semicolons inside dollar-quoted blocks ($$...$$).
@@ -193,10 +188,14 @@ impl Database {
                 if stmt.is_empty() {
                     continue;
                 }
-                sqlx::query(stmt)
-                    .execute(&self.pool)
-                    .await
-                    .map_err(|e| anyhow::anyhow!("Migration {} failed on statement [{}]: {}", migration.version, stmt, e))?;
+                sqlx::query(stmt).execute(&self.pool).await.map_err(|e| {
+                    anyhow::anyhow!(
+                        "Migration {} failed on statement [{}]: {}",
+                        migration.version,
+                        stmt,
+                        e
+                    )
+                })?;
             }
             // Register migration in _sqlx_migrations
             let checksum = Vec::from(migration.checksum.as_ref());

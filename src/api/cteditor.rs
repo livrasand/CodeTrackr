@@ -1,7 +1,11 @@
-use axum::{extract::State, response::{Html, IntoResponse}, Json};
+use crate::{auth::AuthenticatedUser, AppState};
+use axum::{
+    extract::State,
+    response::{Html, IntoResponse},
+    Json,
+};
 use serde::{Deserialize, Serialize};
 use std::sync::{Arc, Mutex};
-use crate::{AppState, auth::AuthenticatedUser};
 
 pub async fn serve_editor() -> impl IntoResponse {
     match tokio::fs::read_to_string("static/cteditor.html").await {
@@ -44,10 +48,9 @@ pub async fn run_plugin(
     // Run the QuickJS sandbox in a blocking thread (rquickjs is not Send)
     let result = tokio::time::timeout(
         std::time::Duration::from_secs(15),
-        tokio::task::spawn_blocking(move || {
-            run_in_quickjs(&code, &trigger, rpc_body.as_ref())
-        }),
-    ).await;
+        tokio::task::spawn_blocking(move || run_in_quickjs(&code, &trigger, rpc_body.as_ref())),
+    )
+    .await;
 
     match result {
         Ok(Ok(resp)) => Json(resp),
@@ -72,11 +75,13 @@ fn run_in_quickjs(code: &str, trigger: &str, rpc_body: Option<&serde_json::Value
 
     let rt = match Runtime::new() {
         Ok(r) => r,
-        Err(e) => return RunResponse {
-            success: false,
-            stdout: String::new(),
-            stderr: format!("Failed to create JS runtime: {e}"),
-        },
+        Err(e) => {
+            return RunResponse {
+                success: false,
+                stdout: String::new(),
+                stderr: format!("Failed to create JS runtime: {e}"),
+            }
+        }
     };
 
     rt.set_memory_limit(16 * 1024 * 1024);
@@ -84,11 +89,13 @@ fn run_in_quickjs(code: &str, trigger: &str, rpc_body: Option<&serde_json::Value
 
     let ctx = match Context::full(&rt) {
         Ok(c) => c,
-        Err(e) => return RunResponse {
-            success: false,
-            stdout: String::new(),
-            stderr: format!("Failed to create JS context: {e}"),
-        },
+        Err(e) => {
+            return RunResponse {
+                success: false,
+                stdout: String::new(),
+                stderr: format!("Failed to create JS context: {e}"),
+            }
+        }
     };
 
     let output: Arc<Mutex<Vec<String>>> = Arc::new(Mutex::new(Vec::new()));
@@ -115,9 +122,11 @@ fn run_in_quickjs(code: &str, trigger: &str, rpc_body: Option<&serde_json::Value
                 // Extraer el mensaje real de la excepción JS
                 let ex = ctx_ref.catch();
                 let msg = if let Some(obj) = ex.as_object() {
-                    obj.get::<_, String>("message").unwrap_or_else(|_| format!("{:?}", ex))
+                    obj.get::<_, String>("message")
+                        .unwrap_or_else(|_| format!("{:?}", ex))
                 } else if let Some(s) = ex.as_string() {
-                    s.to_string().unwrap_or_else(|_| "Unknown exception".to_string())
+                    s.to_string()
+                        .unwrap_or_else(|_| "Unknown exception".to_string())
                 } else {
                     format!("{:?}", ex)
                 };
@@ -140,11 +149,20 @@ fn run_in_quickjs(code: &str, trigger: &str, rpc_body: Option<&serde_json::Value
     let stdout = output.lock().unwrap().join("\n");
 
     match eval_result {
-        Ok(()) => RunResponse { success: true, stdout, stderr: String::new() },
+        Ok(()) => RunResponse {
+            success: true,
+            stdout,
+            stderr: String::new(),
+        },
         Err(_) => {
-            let stderr = js_error.into_inner()
+            let stderr = js_error
+                .into_inner()
                 .unwrap_or_else(|| "Unknown error".to_string());
-            RunResponse { success: false, stdout, stderr }
+            RunResponse {
+                success: false,
+                stdout,
+                stderr,
+            }
         }
     }
 }
@@ -183,9 +201,9 @@ fn build_sandbox_script(code: &str, trigger: &str, rpc_body_json: &str) -> Strin
     } else {
         let call = match trigger {
             "on_heartbeat" => "await on_heartbeat(ctx, heartbeat);",
-            "on_tick"      => "await on_tick(ctx);",
-            "on_install"   => "await on_install(ctx);",
-            _              => "await on_heartbeat(ctx, heartbeat);",
+            "on_tick" => "await on_tick(ctx);",
+            "on_install" => "await on_install(ctx);",
+            _ => "await on_heartbeat(ctx, heartbeat);",
         };
         format!(
             r#"
@@ -223,7 +241,7 @@ const ctx = {{
     incr: function(key)        {{ log("[Redis] INCR " + key); return Promise.resolve(1); }},
     del:  function(key)        {{ log("[Redis] DEL " + key); return Promise.resolve(); }},
   }},
-  config: {{ base_url: "https://codetrackr.leapcell.app" }}
+  config: {{ base_url: "https://codetrackr.fly.dev" }}
 }};
 
 const heartbeat = {{

@@ -3,31 +3,34 @@
 :root {
     /* Linear Design Tokens */
     --color-brand: #5e6ad2; /* Primary actions */
+    --color-brand-light: #7c85e0; /* Primary hover */
     --bg: #171723; /* App background */
     --bg-card: #2c2c35; /* Surface / cards */
     --bg-input: #1a1a1a; /* Input background */
-    --bg-hover: #27272a; /* Hover overlay */
+    --bg-hover: #2d2d36; /* Hover overlay */
 
     --text-main: #ffffff; /* Primary text */
-    --text-muted: #8a8f98; /* Secondary text */
-    --text-dark: #52525b; /* Tertiary text */
+    --text-muted: #a0a5b0; /* Secondary text (was 8a8f98) */
+    --text-dark: #71717a; /* Tertiary text (was 52525b) */
 
     --border: #27272a; /* Divider / border */
+    --border-light: #2f2f3a; /* Light border for cards */
     --border-focus: var(--color-brand);
 
     --font-sans: "Inter", system-ui, sans-serif;
     --font-mono: "JetBrains Mono", monospace;
 
     --radius-sm: 4px; /* Badges, status */
-    --radius: 6px; /* Buttons, inputs, cards */
+    --radius: 8px; /* Buttons, inputs, cards (was 6px) */
     --radius-pill: 99px;
 
-    --transition: 150ms ease;
+    --transition: 200ms ease;
 
     --accent: var(--color-brand); /* Accent used for highlights */
     /* Shadows */
     --shadow-popup: 0 4px 16px rgba(0, 0, 0, 0.4);
     --shadow-modal: 0 16px 48px rgba(0, 0, 0, 0.5);
+    --shadow-glow: 0 0 20px rgba(94, 106, 210, 0.15);
 }
 
 *,
@@ -253,9 +256,17 @@ strong {
 
 .card {
     padding: 24px;
-    border: 1px solid var(--border);
+    border: 1px solid var(--border-light);
     border-radius: var(--radius);
     background: var(--bg);
+    transition:
+        border-color var(--transition),
+        box-shadow var(--transition);
+}
+
+.card:hover {
+    border-color: var(--border-focus);
+    box-shadow: var(--shadow-glow);
 }
 
 .card h3 {
@@ -267,6 +278,7 @@ strong {
 .card p {
     font-size: 13px;
     color: var(--text-muted);
+    line-height: 1.6;
 }
 
 .card code {

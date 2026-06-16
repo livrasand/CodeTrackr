@@ -20,11 +20,11 @@
 //!
 //! [QuickJS]: https://bellard.org/quickjs/
 
-use std::sync::{Arc, Mutex};
 use serde_json::{json, Value};
+use std::sync::{Arc, Mutex};
 
-use crate::{AppState, realtime::RedisPool};
 use crate::services::plugin_permissions::execute_plugin_query_with_permissions;
+use crate::{realtime::RedisPool, AppState};
 
 /// Fuerza el prefijo de namespace en claves Redis para aislar plugins entre sí.
 fn plugin_redis_key(plugin_name: &str, user_id: &str, key: &str) -> String {
@@ -50,37 +50,46 @@ fn setup_quickjs_context(
         let pool = db_pool.clone();
         let plugin_id_for_func = plugin_id_owned;
         let user_id_for_func = user_id_owned.parse::<uuid::Uuid>().unwrap_or_default();
-        let func = rquickjs::Function::new(ctx_ref.clone(), move |sql: String, params_json: String| -> String {
-            let params: Vec<Value> = serde_json::from_str(&params_json).unwrap_or_default();
-            let pool = pool.clone();
-            let plugin_id = plugin_id_for_func;
-            let user_id = user_id_for_func;
+        let func = rquickjs::Function::new(
+            ctx_ref.clone(),
+            move |sql: String, params_json: String| -> String {
+                let params: Vec<Value> = serde_json::from_str(&params_json).unwrap_or_default();
+                let pool = pool.clone();
+                let plugin_id = plugin_id_for_func;
+                let user_id = user_id_for_func;
 
-            // Crear oneshot channel para sincronización
-            let (tx, rx) = tokio::sync::oneshot::channel::<Result<String, String>>();
+                // Crear oneshot channel para sincronización
+                let (tx, rx) = tokio::sync::oneshot::channel::<Result<String, String>>();
 
-            // Spawn async task que use permisos declarativos
-            let handle = tokio::runtime::Handle::current();
-            handle.spawn(async move {
-                match execute_plugin_query_with_permissions(&pool, plugin_id, user_id, &sql, &params).await {
-                    Ok(rows) => {
-                        let _ = tx.send(Ok(serde_json::to_string(&rows).unwrap_or_else(|_| "[]".to_string())));
-                    },
-                    Err(e) => {
-                        tracing::warn!("Plugin db.query error: {e}");
-                        let err_json = serde_json::json!({"__error": e}).to_string();
-                        let _ = tx.send(Err(err_json));
+                // Spawn async task que use permisos declarativos
+                let handle = tokio::runtime::Handle::current();
+                handle.spawn(async move {
+                    match execute_plugin_query_with_permissions(
+                        &pool, plugin_id, user_id, &sql, &params,
+                    )
+                    .await
+                    {
+                        Ok(rows) => {
+                            let _ = tx
+                                .send(Ok(serde_json::to_string(&rows)
+                                    .unwrap_or_else(|_| "[]".to_string())));
+                        }
+                        Err(e) => {
+                            tracing::warn!("Plugin db.query error: {e}");
+                            let err_json = serde_json::json!({"__error": e}).to_string();
+                            let _ = tx.send(Err(err_json));
+                        }
                     }
-                }
-            });
+                });
 
-            // Bloquear hasta recibir resultado (dentro del blocking thread)
-            match handle.block_on(rx) {
-                Ok(Ok(result)) => result,
-                Ok(Err(error)) => error,
-                Err(_) => "{\"__error\": \"Async operation cancelled\"}".to_string(),
-            }
-        })?;
+                // Bloquear hasta recibir resultado (dentro del blocking thread)
+                match handle.block_on(rx) {
+                    Ok(Ok(result)) => result,
+                    Ok(Err(error)) => error,
+                    Err(_) => "{\"__error\": \"Async operation cancelled\"}".to_string(),
+                }
+            },
+        )?;
         ctx_ref.globals().set("__db_query", func)?;
     }
 
@@ -128,31 +137,35 @@ fn setup_quickjs_context(
         let redis_ref = redis.clone();
         let pname = plugin_name_owned.clone();
         let uid = user_id_owned.clone();
-        let func = rquickjs::Function::new(ctx_ref.clone(), move |key: String, value: String| -> String {
-            let redis_ref = redis_ref.clone();
-            let namespaced = plugin_redis_key(&pname, &uid, &key);
+        let func = rquickjs::Function::new(
+            ctx_ref.clone(),
+            move |key: String, value: String| -> String {
+                let redis_ref = redis_ref.clone();
+                let namespaced = plugin_redis_key(&pname, &uid, &key);
 
-            let (tx, rx) = tokio::sync::oneshot::channel::<String>();
+                let (tx, rx) = tokio::sync::oneshot::channel::<String>();
 
-            let handle = tokio::runtime::Handle::current();
-            handle.spawn(async move {
-                if let Ok(mut conn) = redis_ref.get_conn().await {
-                    let _: () = redis::cmd("SET")
-                        .arg(&namespaced).arg(&value)
-                        .query_async::<_, ()>(&mut conn)
-                        .await
-                        .unwrap_or(());
-                    let _ = tx.send("\"ok\"".to_string());
-                } else {
-                    let _ = tx.send("\"error\"".to_string());
+                let handle = tokio::runtime::Handle::current();
+                handle.spawn(async move {
+                    if let Ok(mut conn) = redis_ref.get_conn().await {
+                        let _: () = redis::cmd("SET")
+                            .arg(&namespaced)
+                            .arg(&value)
+                            .query_async::<_, ()>(&mut conn)
+                            .await
+                            .unwrap_or(());
+                        let _ = tx.send("\"ok\"".to_string());
+                    } else {
+                        let _ = tx.send("\"error\"".to_string());
+                    }
+                });
+
+                match handle.block_on(rx) {
+                    Ok(result) => result,
+                    Err(_) => "\"error\"".to_string(),
                 }
-            });
-
-            match handle.block_on(rx) {
-                Ok(result) => result,
-                Err(_) => "\"error\"".to_string(),
-            }
-        })?;
+            },
+        )?;
         ctx_ref.globals().set("__redis_set", func)?;
     }
 
@@ -225,9 +238,7 @@ fn setup_quickjs_context(
     // __user_id() → retorna el user_id como string
     {
         let uid = user_id_owned.clone();
-        let func = rquickjs::Function::new(ctx_ref.clone(), move || -> String {
-            uid.clone()
-        })?;
+        let func = rquickjs::Function::new(ctx_ref.clone(), move || -> String { uid.clone() })?;
         ctx_ref.globals().set("__user_id", func)?;
     }
 
@@ -264,7 +275,6 @@ pub fn run_rpc_in_quickjs(
     let error_cell: Arc<Mutex<Option<String>>> = Arc::new(Mutex::new(None));
     let error_clone = Arc::clone(&error_cell);
 
-
     let script = build_rpc_sandbox(plugin_script, handler, user_id, req_json);
 
     ctx.with(|ctx_ref| -> Result<(), rquickjs::Error> {
@@ -278,7 +288,14 @@ pub fn run_rpc_in_quickjs(
         }
 
         // Configurar funciones de DB y Redis con sincronización real
-        setup_quickjs_context(ctx_ref.clone(), db_pool, redis, plugin_name, user_id, plugin_id)?;
+        setup_quickjs_context(
+            ctx_ref.clone(),
+            db_pool,
+            redis,
+            plugin_name,
+            user_id,
+            plugin_id,
+        )?;
 
         // __set_result(json_string) — el handler llama esto con su valor de retorno
         {
@@ -302,7 +319,8 @@ pub fn run_rpc_in_quickjs(
 
         let _: rquickjs::Value = ctx_ref.eval(script.as_bytes().to_vec())?;
         Ok(())
-    }).map_err(|e| format!("JS eval error: {e}"))?;
+    })
+    .map_err(|e| format!("JS eval error: {e}"))?;
 
     // Drenar jobs pendientes (async/await en el script) — fuera de ctx.with
     loop {
@@ -312,7 +330,6 @@ pub fn run_rpc_in_quickjs(
             Err(_) => break,
         }
     }
-
 
     // Registrar logs del plugin (informativo)
     let logs = log_output.lock().unwrap();
@@ -324,7 +341,10 @@ pub fn run_rpc_in_quickjs(
         return Err(err);
     }
 
-    let result = result_cell.lock().unwrap().take()
+    let result = result_cell
+        .lock()
+        .unwrap()
+        .take()
         .unwrap_or_else(|| json!({"ok": true}));
 
     Ok(result)
@@ -346,7 +366,12 @@ pub fn run_lifecycle_hook_in_quickjs(
     let rt = match Runtime::new() {
         Ok(rt) => rt,
         Err(e) => {
-            tracing::warn!("[lifecycle] JS runtime error for plugin {} hook {}: {}", plugin_name, hook_name, e);
+            tracing::warn!(
+                "[lifecycle] JS runtime error for plugin {} hook {}: {}",
+                plugin_name,
+                hook_name,
+                e
+            );
             return;
         }
     };
@@ -356,7 +381,12 @@ pub fn run_lifecycle_hook_in_quickjs(
     let ctx = match Context::full(&rt) {
         Ok(ctx) => ctx,
         Err(e) => {
-            tracing::warn!("[lifecycle] JS context error for plugin {} hook {}: {}", plugin_name, hook_name, e);
+            tracing::warn!(
+                "[lifecycle] JS context error for plugin {} hook {}: {}",
+                plugin_name,
+                hook_name,
+                e
+            );
             return;
         }
     };
@@ -380,12 +410,24 @@ pub fn run_lifecycle_hook_in_quickjs(
         }
 
         // Configurar funciones de DB y Redis
-        setup_quickjs_context(ctx_ref.clone(), db_pool, redis_pool, plugin_name, user_id, plugin_id)?;
+        setup_quickjs_context(
+            ctx_ref.clone(),
+            db_pool,
+            redis_pool,
+            plugin_name,
+            user_id,
+            plugin_id,
+        )?;
 
         let _: rquickjs::Value = ctx_ref.eval(script.as_bytes().to_vec())?;
         Ok(())
     }) {
-        tracing::warn!("[lifecycle] JS eval error for plugin {} hook {}: {}", plugin_name, hook_name, e);
+        tracing::warn!(
+            "[lifecycle] JS eval error for plugin {} hook {}: {}",
+            plugin_name,
+            hook_name,
+            e
+        );
         return;
     }
 
@@ -398,7 +440,6 @@ pub fn run_lifecycle_hook_in_quickjs(
         }
     }
 
-
     // Registrar logs del hook
     let logs = log_output.lock().unwrap();
     for line in logs.iter() {
@@ -409,7 +450,12 @@ pub fn run_lifecycle_hook_in_quickjs(
 /// Construye el script JS completo para ejecutar en QuickJS.
 /// ctx.db/redis son wrappers que llaman a las funciones Rust nativas expuestas.
 #[allow(dead_code)]
-pub fn build_rpc_sandbox(plugin_script: &str, handler: &str, _user_id: &str, req_json: &str) -> String {
+pub fn build_rpc_sandbox(
+    plugin_script: &str,
+    handler: &str,
+    _user_id: &str,
+    req_json: &str,
+) -> String {
     format!(
         r#"
 // ── Helpers de logging ───────────────────────────────────────────────────────
@@ -448,7 +494,7 @@ const ctx = {{
       return Promise.resolve();
     }}
   }},
-  config: {{ base_url: "https://codetrackr.leapcell.app" }},
+  config: {{ base_url: "https://codetrackr.fly.dev" }},
   // Mock globals for server-side evaluation to avoid ReferenceErrors
   isDark: true,
   container: null,
@@ -489,7 +535,12 @@ const token = ctx.token;
 
 /// Construye el script JS completo para ejecutar hooks de lifecycle en QuickJS.
 /// Similar a build_rpc_sandbox pero ejecuta hooks de lifecycle que no retornan valores.
-pub fn build_lifecycle_sandbox(plugin_script: &str, hook_name: &str, _user_id: &str, event_data_json: &str) -> String {
+pub fn build_lifecycle_sandbox(
+    plugin_script: &str,
+    hook_name: &str,
+    _user_id: &str,
+    event_data_json: &str,
+) -> String {
     format!(
         r#"
 // ── Helpers de logging ───────────────────────────────────────────────────────
@@ -526,7 +577,7 @@ const ctx = {{
       return Promise.resolve();
     }}
   }},
-  config: {{ base_url: "https://codetrackr.leapcell.app" }},
+  config: {{ base_url: "https://codetrackr.fly.dev" }},
   // Mock globals for server-side evaluation to avoid ReferenceErrors
   isDark: true,
   container: null,

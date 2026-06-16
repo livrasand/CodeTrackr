@@ -8,18 +8,14 @@ mod realtime;
 mod services;
 
 use axum::{
-    Router,
-    routing::{get, post, delete, patch},
-    extract::{Request, ConnectInfo},
+    extract::{ConnectInfo, Request},
     middleware::from_fn,
+    routing::{delete, get, patch, post},
+    Router,
 };
 use std::net::SocketAddr;
-use tower_http::{
-    cors::CorsLayer,
-    trace::TraceLayer,
-    compression::CompressionLayer,
-};
-use tower_governor::{GovernorLayer, governor::GovernorConfigBuilder, key_extractor::KeyExtractor};
+use tower_governor::{governor::GovernorConfigBuilder, key_extractor::KeyExtractor, GovernorLayer};
+use tower_http::{compression::CompressionLayer, cors::CorsLayer, trace::TraceLayer};
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
 use db::Database;
@@ -36,21 +32,21 @@ impl KeyExtractor for RealIpKeyExtractor {
     fn extract<T>(&self, req: &Request<T>) -> Result<Self::Key, tower_governor::GovernorError> {
         // Prioridad de headers para detectar IP real (Cloudflare, Nginx, AWS ALB, etc.)
         let headers = req.headers();
-        
+
         // 1. Cloudflare Connecting IP
         if let Some(ip) = headers.get("CF-Connecting-IP") {
             if let Ok(ip_str) = ip.to_str() {
                 return Ok(ip_str.to_string());
             }
         }
-        
+
         // 2. True Client IP (Cloudflare Enterprise)
         if let Some(ip) = headers.get("True-Client-IP") {
             if let Ok(ip_str) = ip.to_str() {
                 return Ok(ip_str.to_string());
             }
         }
-        
+
         // 3. X-Forwarded-For (estándar, tomar primera IP)
         if let Some(xff) = headers.get("X-Forwarded-For") {
             if let Ok(xff_str) = xff.to_str() {
@@ -64,26 +60,26 @@ impl KeyExtractor for RealIpKeyExtractor {
                 }
             }
         }
-        
+
         // 4. X-Real-IP (Nginx común)
         if let Some(ip) = headers.get("X-Real-IP") {
             if let Ok(ip_str) = ip.to_str() {
                 return Ok(ip_str.to_string());
             }
         }
-        
+
         // 5. X-Client-IP (Apache)
         if let Some(ip) = headers.get("X-Client-IP") {
             if let Ok(ip_str) = ip.to_str() {
                 return Ok(ip_str.to_string());
             }
         }
-        
+
         // 6. Fallback a IP de conexión (sin proxy)
         if let Some(ConnectInfo(addr)) = req.extensions().get::<ConnectInfo<SocketAddr>>() {
             return Ok(addr.ip().to_string());
         }
-        
+
         // 7. Último recurso: IP genérica para evitar bloqueos
         tracing::warn!("No se pudo determinar IP del cliente, usando fallback");
         Ok("unknown".to_string())
@@ -95,7 +91,11 @@ pub struct AppState {
     pub db: Database,
     pub redis: RedisPool,
     pub config: AppConfig,
-    pub exchange_codes: std::sync::Arc<tokio::sync::Mutex<std::collections::HashMap<String, (serde_json::Value, std::time::Instant)>>>,
+    pub exchange_codes: std::sync::Arc<
+        tokio::sync::Mutex<
+            std::collections::HashMap<String, (serde_json::Value, std::time::Instant)>,
+        >,
+    >,
 }
 
 #[derive(Clone)]
@@ -123,12 +123,14 @@ async fn main() -> anyhow::Result<()> {
 
     let config = AppConfig {
         github_client_id: std::env::var("GITHUB_CLIENT_ID").expect("GITHUB_CLIENT_ID must be set"),
-        github_client_secret: std::env::var("GITHUB_CLIENT_SECRET").expect("GITHUB_CLIENT_SECRET must be set"),
+        github_client_secret: std::env::var("GITHUB_CLIENT_SECRET")
+            .expect("GITHUB_CLIENT_SECRET must be set"),
         gitlab_client_id: std::env::var("GITLAB_CLIENT_ID").unwrap_or_default(),
         gitlab_client_secret: std::env::var("GITLAB_CLIENT_SECRET").unwrap_or_default(),
         jwt_secret: std::env::var("JWT_SECRET").expect("JWT_SECRET must be set"),
         base_url: std::env::var("BASE_URL").unwrap_or_else(|_| "http://localhost:8080".to_string()),
-        frontend_url: std::env::var("FRONTEND_URL").unwrap_or_else(|_| "http://localhost:8080".to_string()),
+        frontend_url: std::env::var("FRONTEND_URL")
+            .unwrap_or_else(|_| "http://localhost:8080".to_string()),
     };
 
     let database_url = std::env::var("DATABASE_URL").expect("DATABASE_URL must be set");
@@ -145,7 +147,10 @@ async fn main() -> anyhow::Result<()> {
             }
             Err(e) => {
                 if i == 5 {
-                    return Err(anyhow::anyhow!("Failed to connect to DB after 5 attempts: {}", e));
+                    return Err(anyhow::anyhow!(
+                        "Failed to connect to DB after 5 attempts: {}",
+                        e
+                    ));
                 }
                 tracing::warn!("DB connection failed, retrying in 2s... Error: {}", e);
                 tokio::time::sleep(tokio::time::Duration::from_secs(2)).await;
@@ -166,7 +171,10 @@ async fn main() -> anyhow::Result<()> {
             }
             Err(e) => {
                 if i == 5 {
-                    return Err(anyhow::anyhow!("Failed to connect to Redis after 5 attempts: {}", e));
+                    return Err(anyhow::anyhow!(
+                        "Failed to connect to Redis after 5 attempts: {}",
+                        e
+                    ));
                 }
                 tracing::warn!("Redis connection failed, retrying in 2s... Error: {}", e);
                 tokio::time::sleep(tokio::time::Duration::from_secs(2)).await;
@@ -175,11 +183,13 @@ async fn main() -> anyhow::Result<()> {
     }
     let redis = redis.unwrap();
 
-    let state = AppState { 
-        db, 
-        redis, 
-        config, 
-        exchange_codes: std::sync::Arc::new(tokio::sync::Mutex::new(std::collections::HashMap::new())) 
+    let state = AppState {
+        db,
+        redis,
+        config,
+        exchange_codes: std::sync::Arc::new(tokio::sync::Mutex::new(
+            std::collections::HashMap::new(),
+        )),
     };
 
     // TODO: Fix plugin workers system - temporarily disabled
@@ -215,7 +225,10 @@ async fn main() -> anyhow::Result<()> {
             let mut interval = tokio::time::interval(std::time::Duration::from_secs(3600)); // Every hour
             loop {
                 interval.tick().await;
-                if let Err(e) = services::refresh_tokens::RefreshTokenService::cleanup_expired_tokens(&state).await {
+                if let Err(e) =
+                    services::refresh_tokens::RefreshTokenService::cleanup_expired_tokens(&state)
+                        .await
+                {
                     tracing::error!("Refresh token cleanup failed: {}", e);
                 } else {
                     tracing::debug!("Refresh token cleanup completed");
@@ -224,7 +237,7 @@ async fn main() -> anyhow::Result<()> {
         }
     });
 
-    // Redis pub/sub subscriber is disabled because Leapcell Serverless Redis does not support SUBSCRIBE.
+    // Redis pub/sub subscriber is disabled because Serverless Redis does not support SUBSCRIBE.
     // Realtime events will flow seamlessly through the local Tokio broadcast channel instead.
     // realtime::start_redis_subscriber(redis_url.clone()).await;
 
@@ -239,7 +252,9 @@ async fn main() -> anyhow::Result<()> {
     let cors = CorsLayer::new()
         .allow_origin(tower_http::cors::AllowOrigin::predicate(
             move |origin: &axum::http::HeaderValue, _: &axum::http::request::Parts| {
-                let Ok(s) = origin.to_str() else { return false; };
+                let Ok(s) = origin.to_str() else {
+                    return false;
+                };
                 // Permitir cualquier localhost/127.0.0.1 (cualquier puerto) + FRONTEND_URL configurado
                 s.starts_with("http://localhost:")
                     || s.starts_with("https://localhost:")
@@ -275,8 +290,8 @@ async fn main() -> anyhow::Result<()> {
     // Rate limiter específico para badges (público, sin auth)
     // Más permisivo que auth pero más restrictivo que API general
     let badge_governor_conf = GovernorConfigBuilder::default()
-        .per_second(30)   // 30 req/s por IP
-        .burst_size(60)   // ráfaga de hasta 60
+        .per_second(30) // 30 req/s por IP
+        .burst_size(60) // ráfaga de hasta 60
         .key_extractor(RealIpKeyExtractor)
         .finish()
         .unwrap();
@@ -322,13 +337,16 @@ async fn main() -> anyhow::Result<()> {
     tracing::info!("🚀 CodeTrackr running on http://{}", addr);
 
     let listener = tokio::net::TcpListener::bind(addr).await?;
-    axum::serve(listener, app.into_make_service_with_connect_info::<SocketAddr>()).await?;
+    axum::serve(
+        listener,
+        app.into_make_service_with_connect_info::<SocketAddr>(),
+    )
+    .await?;
 
     Ok(())
 }
 
 fn api_routes(state: AppState, plugin_router: Router<AppState>) -> Router<AppState> {
-
     // Rate limiting para webhook con IP real
     let webhook_governor_conf = GovernorConfigBuilder::default()
         .per_second(50)
@@ -375,8 +393,14 @@ fn api_routes(state: AppState, plugin_router: Router<AppState>) -> Router<AppSta
         .route("/stats/sessions", get(api::stats::get_sessions))
         // Leaderboards
         .route("/leaderboards/global", get(api::leaderboards::get_global))
-        .route("/leaderboards/language/:lang", get(api::leaderboards::get_by_language))
-        .route("/leaderboards/country/:country", get(api::leaderboards::get_by_country))
+        .route(
+            "/leaderboards/language/:lang",
+            get(api::leaderboards::get_by_language),
+        )
+        .route(
+            "/leaderboards/country/:country",
+            get(api::leaderboards::get_by_country),
+        )
         // API Keys
         .route("/keys", get(api::keys::list_keys))
         .route("/keys", post(api::keys::create_key))
@@ -384,7 +408,10 @@ fn api_routes(state: AppState, plugin_router: Router<AppState>) -> Router<AppSta
         .route("/keys/:id", patch(api::keys::rename_key))
         // Refresh Tokens
         .route("/refresh-tokens", get(api::auth::list_refresh_tokens))
-        .route("/refresh-tokens/:id", delete(api::auth::revoke_refresh_token))
+        .route(
+            "/refresh-tokens/:id",
+            delete(api::auth::revoke_refresh_token),
+        )
         // Export
         .route("/export/json", get(api::export::export_json))
         .route("/export/csv", get(api::export::export_csv))
@@ -394,15 +421,24 @@ fn api_routes(state: AppState, plugin_router: Router<AppState>) -> Router<AppSta
         .route("/user/me", get(api::users::get_me))
         .route("/user/profile/update", post(api::users::update_profile))
         .route("/user/follow/:username", post(api::users::follow_user))
-        .route("/user/unfollow/:username", delete(api::users::unfollow_user))
+        .route(
+            "/user/unfollow/:username",
+            delete(api::users::unfollow_user),
+        )
         .route("/user/following/:username", get(api::users::is_following))
         .route("/user/badge/:username/:lang", get(api::users::get_badge))
-        .route("/user/profile/:username", get(api::users::get_public_profile))
+        .route(
+            "/user/profile/:username",
+            get(api::users::get_public_profile),
+        )
         .route("/user/contact/:username", post(api::users::contact_dev))
         // Plugin editor sandbox
         .route("/cteditor/run", post(api::cteditor::run_plugin))
         // Plugin RPC — user-defined endpoints inside store plugin scripts
-        .route("/plugins/:name/rpc/:handler", post(api::plugin_rpc::rpc_call))
+        .route(
+            "/plugins/:name/rpc/:handler",
+            post(api::plugin_rpc::rpc_call),
+        )
         // WebSocket ticket (single-use, TTL 30s — evita exponer JWT en query string)
         .route("/ws-ticket", post(realtime::ws_handler::create_ws_ticket))
         // Health
@@ -411,13 +447,19 @@ fn api_routes(state: AppState, plugin_router: Router<AppState>) -> Router<AppSta
         // Plugin system
         .route("/plugins", get(plugins::list_plugins))
         .route("/plugins/panels", get(plugins::get_dashboard_manifests))
-        .route("/dashboard/order", post(api::dashboard::save_dashboard_order))
+        .route(
+            "/dashboard/order",
+            post(api::dashboard::save_dashboard_order),
+        )
         .nest("/plugins", plugin_router)
         // Theme store
         .route("/themes", get(api::themes::list_themes))
         .route("/themes/publish", post(api::themes::publish_theme))
         .route("/themes/install/:id", post(api::themes::install_theme))
-        .route("/themes/uninstall/:id", delete(api::themes::uninstall_theme))
+        .route(
+            "/themes/uninstall/:id",
+            delete(api::themes::uninstall_theme),
+        )
         .route("/themes/installed", get(api::themes::get_installed_themes))
         .route("/themes/active", get(api::themes::get_active_theme))
         .route("/themes/apply", post(api::themes::apply_theme))
@@ -427,33 +469,59 @@ fn api_routes(state: AppState, plugin_router: Router<AppState>) -> Router<AppSta
         .route("/store/install/:id", post(api::store::install_plugin))
         .route("/store/uninstall/:id", delete(api::store::uninstall_plugin))
         .route("/store/installed", get(api::store::get_installed_plugins))
-        .route("/store/plugin/:id/script", get(api::store::get_plugin_script))
-        .route("/store/plugin/:id/accepted", get(api::store::get_plugin_accepted_version))
-        .route("/store/plugin/:id/accept", post(api::store::accept_plugin_version))
-        .route("/store/plugin/:id/detail", get(api::store::get_plugin_detail))
+        .route(
+            "/store/plugin/:id/script",
+            get(api::store::get_plugin_script),
+        )
+        .route(
+            "/store/plugin/:id/accepted",
+            get(api::store::get_plugin_accepted_version),
+        )
+        .route(
+            "/store/plugin/:id/accept",
+            post(api::store::accept_plugin_version),
+        )
+        .route(
+            "/store/plugin/:id/detail",
+            get(api::store::get_plugin_detail),
+        )
         .route("/store/plugin/:id/rate", post(api::store::rate_plugin))
         .route("/store/plugin/:id/review", post(api::store::review_plugin))
-        .route("/store/plugin/:id/screenshot", post(api::store::add_screenshot))
+        .route(
+            "/store/plugin/:id/screenshot",
+            post(api::store::add_screenshot),
+        )
         .route("/store/report/:id", post(api::store::report_plugin))
         .route("/store/my/:id", delete(api::store::author_delete_plugin))
         // Admin
         .route("/store/admin/plugins", get(api::store::admin_list_plugins))
         .route("/store/admin/ban/:id", post(api::store::admin_ban_plugin))
-        .route("/store/admin/unban/:id", post(api::store::admin_unban_plugin))
-        .route("/store/admin/delete/:id", delete(api::store::admin_delete_plugin))
+        .route(
+            "/store/admin/unban/:id",
+            post(api::store::admin_unban_plugin),
+        )
+        .route(
+            "/store/admin/delete/:id",
+            delete(api::store::admin_delete_plugin),
+        )
         .route("/store/admin/reports", get(api::store::admin_list_reports))
-        .route("/store/admin/reports/:id/resolve", post(api::store::admin_resolve_report))
+        .route(
+            "/store/admin/reports/:id/resolve",
+            post(api::store::admin_resolve_report),
+        )
         // Billing / Stripe (con rate limiting específico)
         .route("/billing/config", get(api::billing::get_billing_config))
         .route("/billing/status", get(api::billing::get_billing_status))
-        .route("/billing/checkout", post(api::billing::create_checkout_session))
+        .route(
+            "/billing/checkout",
+            post(api::billing::create_checkout_session),
+        )
         .route("/billing/portal", post(api::billing::create_portal_session))
         .with_state(state)
         .layer(from_fn(middleware::csp::api_csp_middleware))
-        .layer(governor_layer)  // Rate limiting general con IP real
+        .layer(governor_layer) // Rate limiting general con IP real
         .merge(webhook_router)
 }
-
 
 fn auth_routes(state: AppState) -> Router<AppState> {
     // Rate limiting para auth con IP real (más restrictivo)
@@ -473,12 +541,21 @@ fn auth_routes(state: AppState) -> Router<AppState> {
         .route("/exchange", post(auth::github::exchange_code))
         .route("/gitlab", get(auth::gitlab::gitlab_login))
         .route("/gitlab/callback", get(auth::gitlab::gitlab_callback))
-        .route("/anonymous/create", post(auth::anonymous::create_anonymous_account))
-        .route("/anonymous/login", post(auth::anonymous::login_with_account_number))
-        .route("/anonymous/verify", post(auth::anonymous::verify_account_number))
+        .route(
+            "/anonymous/create",
+            post(auth::anonymous::create_anonymous_account),
+        )
+        .route(
+            "/anonymous/login",
+            post(auth::anonymous::login_with_account_number),
+        )
+        .route(
+            "/anonymous/verify",
+            post(auth::anonymous::verify_account_number),
+        )
         .route("/logout", post(auth::logout))
         .route("/refresh", post(auth::refresh_token))
         .with_state(state)
         .layer(from_fn(middleware::csp::api_csp_middleware))
-        .layer(auth_governor_layer)  // Rate limiting específico para auth con IP real
+        .layer(auth_governor_layer) // Rate limiting específico para auth con IP real
 }
