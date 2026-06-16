@@ -1,20 +1,22 @@
+pub mod anonymous;
 pub mod github;
 pub mod gitlab;
-pub mod anonymous;
 
+use crate::{error_handling, services::refresh_tokens::RefreshTokenService, AppState};
 use axum::{
-    extract::{Path, State, ConnectInfo},
-    http::{StatusCode, header},
+    extract::{ConnectInfo, Path, State},
+    http::{header, StatusCode},
     response::{Json, Response},
 };
 use serde::{Deserialize, Serialize};
 use serde_json::json;
-use crate::{AppState, error_handling, services::refresh_tokens::RefreshTokenService};
 use sqlx::Row;
 
 pub async fn logout(
     State(state): State<AppState>,
-    axum_extra::TypedHeader(auth): axum_extra::TypedHeader<axum_extra::headers::Authorization<axum_extra::headers::authorization::Bearer>>,
+    axum_extra::TypedHeader(auth): axum_extra::TypedHeader<
+        axum_extra::headers::Authorization<axum_extra::headers::authorization::Bearer>,
+    >,
 ) -> Result<Response, (StatusCode, Json<serde_json::Value>)> {
     let token = auth.token();
     if let Ok(claims) = verify_jwt(token, &state.config.jwt_secret) {
@@ -36,9 +38,16 @@ pub async fn logout(
     // Eliminar cookie JWT
     let response = Response::builder()
         .status(StatusCode::OK)
-        .header("Set-Cookie", "jwt=; HttpOnly; Secure; SameSite=Lax; Path=/; Max-Age=0")
+        .header(
+            "Set-Cookie",
+            "jwt=; HttpOnly; Secure; SameSite=Lax; Path=/; Max-Age=0",
+        )
         .header("Content-Type", "application/json")
-        .body(json!({"message": "Logged out successfully"}).to_string().into())
+        .body(
+            json!({"message": "Logged out successfully"})
+                .to_string()
+                .into(),
+        )
         .map_err(|e| error_handling::handle_auth_error(e))?;
 
     Ok(response)
@@ -53,23 +62,29 @@ pub async fn list_refresh_tokens(
         .await
         .map_err(|e| {
             tracing::error!("Failed to list refresh tokens: {}", e);
-            (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": "Failed to list tokens"})))
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(json!({"error": "Failed to list tokens"})),
+            )
         })?;
 
-    let tokens_json: Vec<serde_json::Value> = tokens.into_iter().map(|t| {
-        json!({
-            "id": t.id,
-            "device_id": t.device_id,
-            "device_info": t.device_info,
-            "ip_address": t.ip_address,
-            "user_agent": t.user_agent,
-            "created_at": t.created_at,
-            "last_used_at": t.last_used_at,
-            "expires_at": t.expires_at,
-            "usage_count": t.usage_count,
-            "suspicious_activity": t.suspicious_activity
+    let tokens_json: Vec<serde_json::Value> = tokens
+        .into_iter()
+        .map(|t| {
+            json!({
+                "id": t.id,
+                "device_id": t.device_id,
+                "device_info": t.device_info,
+                "ip_address": t.ip_address,
+                "user_agent": t.user_agent,
+                "created_at": t.created_at,
+                "last_used_at": t.last_used_at,
+                "expires_at": t.expires_at,
+                "usage_count": t.usage_count,
+                "suspicious_activity": t.suspicious_activity
+            })
         })
-    }).collect();
+        .collect();
 
     Ok(Json(json!({
         "tokens": tokens_json,
@@ -85,7 +100,7 @@ pub async fn revoke_refresh_token(
 ) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
     // Verificar que el token pertenece al usuario
     let _token = sqlx::query(
-        "SELECT token_hash FROM refresh_tokens WHERE id = $1 AND user_id = $2 AND is_active = true"
+        "SELECT token_hash FROM refresh_tokens WHERE id = $1 AND user_id = $2 AND is_active = true",
     )
     .bind(token_id)
     .bind(user.id)
@@ -93,23 +108,30 @@ pub async fn revoke_refresh_token(
     .await
     .map_err(|e| {
         tracing::error!("Database error: {}", e);
-        (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": "Database error"})))
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(json!({"error": "Database error"})),
+        )
     })?
     .ok_or_else(|| {
-        (StatusCode::NOT_FOUND, Json(json!({"error": "Token not found"})))
+        (
+            StatusCode::NOT_FOUND,
+            Json(json!({"error": "Token not found"})),
+        )
     })?;
 
     // Revocar el token
-    sqlx::query(
-        "UPDATE refresh_tokens SET is_active = false, rotated_at = NOW() WHERE id = $1"
-    )
-    .bind(token_id)
-    .execute(&state.db.pool)
-    .await
-    .map_err(|e| {
-        tracing::error!("Failed to revoke token: {}", e);
-        (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": "Failed to revoke token"})))
-    })?;
+    sqlx::query("UPDATE refresh_tokens SET is_active = false, rotated_at = NOW() WHERE id = $1")
+        .bind(token_id)
+        .execute(&state.db.pool)
+        .await
+        .map_err(|e| {
+            tracing::error!("Failed to revoke token: {}", e);
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(json!({"error": "Failed to revoke token"})),
+            )
+        })?;
 
     Ok(Json(json!({"message": "Token revoked successfully"})))
 }
@@ -118,7 +140,7 @@ pub async fn revoke_refresh_token(
 pub struct RefreshRequest {
     pub refresh_token: String,
     #[allow(dead_code)]
-    pub device_id: String,
+    pub device_id: Option<String>,
 }
 
 #[derive(Serialize)]
@@ -135,53 +157,68 @@ pub async fn refresh_token(
 ) -> Result<Response, (StatusCode, Json<serde_json::Value>)> {
     // Extract client information for security monitoring
     let ip_address = Some(conn.ip().to_string());
-    let user_agent = headers.get("user-agent")
+    let user_agent = headers
+        .get("user-agent")
         .and_then(|h| h.to_str().ok())
         .map(|s| s.to_string());
 
     // Rotate refresh token with security checks
-    let token_response = RefreshTokenService::rotate_token(
-        &payload.refresh_token,
-        ip_address,
-        user_agent,
-        &state,
-    ).await.map_err(|e| {
-        tracing::warn!("Refresh token rotation failed: {}", e);
-        (StatusCode::UNAUTHORIZED, Json(json!({"error": e})))
-    })?;
+    let token_response =
+        RefreshTokenService::rotate_token(&payload.refresh_token, ip_address, user_agent, &state)
+            .await
+            .map_err(|e| {
+                tracing::warn!("Refresh token rotation failed: {}", e);
+                (StatusCode::UNAUTHORIZED, Json(json!({"error": e})))
+            })?;
 
     // Get user_id from the rotated token
-    let token_hash = RefreshTokenService::hash_token(&payload.refresh_token, &state.config.jwt_secret)
-        .map_err(|e| {
-            tracing::error!("Token hashing error: {}", e);
-            (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": "Authentication failed"})))
-        })?;
+    let token_hash =
+        RefreshTokenService::hash_token(&payload.refresh_token, &state.config.jwt_secret).map_err(
+            |e| {
+                tracing::error!("Token hashing error: {}", e);
+                (
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    Json(json!({"error": "Authentication failed"})),
+                )
+            },
+        )?;
 
-    let old_token_row = sqlx::query(
-        "SELECT user_id FROM refresh_tokens WHERE token_hash = $1"
-    )
-    .bind(&token_hash)
-    .fetch_optional(&state.db.pool)
-    .await
-    .map_err(|e| {
-        tracing::error!("Database error: {}", e);
-        (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": "Authentication failed"})))
-    })?
-    .ok_or_else(|| {
-        (StatusCode::UNAUTHORIZED, Json(json!({"error": "Invalid token"})))
-    })?;
-    let old_token_user_id: uuid::Uuid = old_token_row.try_get("user_id")
+    let old_token_row = sqlx::query("SELECT user_id FROM refresh_tokens WHERE token_hash = $1")
+        .bind(&token_hash)
+        .fetch_optional(&state.db.pool)
+        .await
         .map_err(|e| {
-            tracing::error!("Failed to get user_id from token row: {}", e);
-            (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": "Authentication failed"})))
+            tracing::error!("Database error: {}", e);
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(json!({"error": "Authentication failed"})),
+            )
+        })?
+        .ok_or_else(|| {
+            (
+                StatusCode::UNAUTHORIZED,
+                Json(json!({"error": "Invalid token"})),
+            )
         })?;
+    let old_token_user_id: uuid::Uuid = old_token_row.try_get("user_id").map_err(|e| {
+        tracing::error!("Failed to get user_id from token row: {}", e);
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(json!({"error": "Authentication failed"})),
+        )
+    })?;
 
     // Generate new access token
-    let new_access_token = create_access_token(&old_token_user_id.to_string(), &state.config.jwt_secret)
-        .map_err(|e| {
-            tracing::error!("Access token creation failed: {}", e);
-            (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": "Authentication failed"})))
-        })?;
+    let new_access_token =
+        create_access_token(&old_token_user_id.to_string(), &state.config.jwt_secret).map_err(
+            |e| {
+                tracing::error!("Access token creation failed: {}", e);
+                (
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    Json(json!({"error": "Authentication failed"})),
+                )
+            },
+        )?;
 
     let response = Json(json!(RefreshResponse {
         access_token: new_access_token,
@@ -197,11 +234,16 @@ pub async fn refresh_token(
 
 // ── JWT ──────────────────────────────────────────────────────────────────────
 
-use jsonwebtoken::{encode, decode, Header, Algorithm, Validation, EncodingKey, DecodingKey};
 use crate::models::Claims;
 use chrono::Utc;
+use jsonwebtoken::{decode, encode, Algorithm, DecodingKey, EncodingKey, Header, Validation};
 
-pub fn create_jwt(user_id: &str, secret: &str, token_type: crate::models::TokenType, expires_in_seconds: i64) -> anyhow::Result<String> {
+pub fn create_jwt(
+    user_id: &str,
+    secret: &str,
+    token_type: crate::models::TokenType,
+    expires_in_seconds: i64,
+) -> anyhow::Result<String> {
     use uuid::Uuid;
 
     let now = Utc::now().timestamp();
@@ -228,7 +270,12 @@ pub fn create_access_token(user_id: &str, secret: &str) -> anyhow::Result<String
 // Función para refresh tokens de 7 días
 #[allow(dead_code)]
 pub fn create_refresh_token(user_id: &str, secret: &str) -> anyhow::Result<String> {
-    create_jwt(user_id, secret, crate::models::TokenType::Refresh, 7 * 24 * 60 * 60) // 7 días
+    create_jwt(
+        user_id,
+        secret,
+        crate::models::TokenType::Refresh,
+        7 * 24 * 60 * 60,
+    ) // 7 días
 }
 
 pub fn verify_jwt(token: &str, secret: &str) -> anyhow::Result<Claims> {
@@ -259,19 +306,21 @@ impl FromRequestParts<AppState> for AuthenticatedUser {
         parts: &mut Parts,
         state: &AppState,
     ) -> Result<Self, Self::Rejection> {
-        let token = extract_token(&parts.headers)
-            .ok_or_else(|| {
-                (
-                    StatusCode::UNAUTHORIZED,
-                    Json(json!({"error": "Missing or invalid Authorization header"})),
-                )
-            })?;
+        let token = extract_token(&parts.headers).ok_or_else(|| {
+            (
+                StatusCode::UNAUTHORIZED,
+                Json(json!({"error": "Missing or invalid Authorization header"})),
+            )
+        })?;
 
         // Try JWT first
         if let Ok(claims) = verify_jwt(&token, &state.config.jwt_secret) {
             // Validar que sea un access token (los refresh tokens no deben usarse para autenticación)
             if !matches!(claims.token_type, crate::models::TokenType::Access) {
-                return Err((StatusCode::UNAUTHORIZED, Json(json!({"error": "Invalid token type for authentication"}))));
+                return Err((
+                    StatusCode::UNAUTHORIZED,
+                    Json(json!({"error": "Invalid token type for authentication"})),
+                ));
             }
 
             // Check JWT blacklist by jti (populated on logout)
@@ -284,29 +333,42 @@ impl FromRequestParts<AppState> for AuthenticatedUser {
                     .await
                     .ok()?;
                 val
-            }.await.is_some();
+            }
+            .await
+            .is_some();
 
             if is_blacklisted {
-                return Err((StatusCode::UNAUTHORIZED, Json(json!({"error": "Token has been revoked"}))));
+                return Err((
+                    StatusCode::UNAUTHORIZED,
+                    Json(json!({"error": "Token has been revoked"})),
+                ));
             }
 
             let user_id: uuid::Uuid = claims.sub.parse().map_err(|_| {
-                (StatusCode::UNAUTHORIZED, Json(json!({"error": "Invalid token"})))
+                (
+                    StatusCode::UNAUTHORIZED,
+                    Json(json!({"error": "Invalid token"})),
+                )
             })?;
 
-            let user = sqlx::query_as::<_, crate::models::User>(
-                "SELECT * FROM users WHERE id = $1"
-            )
-            .bind(user_id)
-            .fetch_optional(&state.db.pool)
-            .await
-            .map_err(|e| {
-                tracing::error!("JWT auth DB error: {}", e);
-                (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": "Authentication failed"})))
-            })?
-            .ok_or_else(|| {
-                (StatusCode::UNAUTHORIZED, Json(json!({"error": "User not found"})))
-            })?;
+            let user =
+                sqlx::query_as::<_, crate::models::User>("SELECT * FROM users WHERE id = $1")
+                    .bind(user_id)
+                    .fetch_optional(&state.db.pool)
+                    .await
+                    .map_err(|e| {
+                        tracing::error!("JWT auth DB error: {}", e);
+                        (
+                            StatusCode::INTERNAL_SERVER_ERROR,
+                            Json(json!({"error": "Authentication failed"})),
+                        )
+                    })?
+                    .ok_or_else(|| {
+                        (
+                            StatusCode::UNAUTHORIZED,
+                            Json(json!({"error": "User not found"})),
+                        )
+                    })?;
 
             return Ok(AuthenticatedUser(user));
         }
@@ -325,19 +387,23 @@ impl FromRequestParts<AppState> for AuthenticatedUser {
         .await
         .map_err(|e| {
             tracing::error!("API key auth DB error: {}", e);
-            (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": "Authentication failed"})))
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(json!({"error": "Authentication failed"})),
+            )
         })?
         .ok_or_else(|| {
-            (StatusCode::UNAUTHORIZED, Json(json!({"error": "Invalid API key"})))
+            (
+                StatusCode::UNAUTHORIZED,
+                Json(json!({"error": "Invalid API key"})),
+            )
         })?;
 
         // Update last_used_at
-        let _ = sqlx::query(
-            "UPDATE api_keys SET last_used_at = NOW() WHERE key_hash = $1"
-        )
-        .bind(&key_hash)
-        .execute(&state.db.pool)
-        .await;
+        let _ = sqlx::query("UPDATE api_keys SET last_used_at = NOW() WHERE key_hash = $1")
+            .bind(&key_hash)
+            .execute(&state.db.pool)
+            .await;
 
         Ok(AuthenticatedUser(user))
     }
