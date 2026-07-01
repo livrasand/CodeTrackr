@@ -102,4 +102,18 @@ The project was developed under a human-AI collaboration approach where:
 
 Artificial intelligence is a productivity multiplier, not a substitute for the developer. Projects like CodeTrackr demonstrate that well-structured human-AI collaboration can achieve high-quality technical results in a fraction of the time, as long as the developer maintains architectural control and responsibility over the produced code.
 
+---
 
+Star this repo if you believe developers deserve the right to contribute anonymously.
+
+[![Share](https://img.shields.io/badge/share-000000?logo=x&logoColor=white)](https://x.com/intent/tweet?text=Check%20out%20this%20project%20on%20GitHub:%20https://github.com/livrasand/gitGost%20%23gitGost%20%23anonymous%20%23privacy)
+[![Share](https://img.shields.io/badge/share-1877F2?logo=facebook&logoColor=white)](https://www.facebook.com/sharer/sharer.php?u=https://github.com/livrasand/gitGost)
+[![Share](https://img.shields.io/badge/share-0A66C2?logo=linkedin&logoColor=white)](https://www.linkedin.com/sharing/share-offsite/?url=https://github.com/livrasand/gitGost)
+[![Share](https://img.shields.io/badge/share-FF4500?logo=reddit&logoColor=white)](https://www.reddit.com/submit?title=Check%20out%20this%20project%20on%20GitHub:%20https://github.com/livrasand/gitGost)
+[![Share](https://img.shields.io/badge/share-0088CC?logo=telegram&logoColor=white)](https://t.me/share/url?url=https://github.com/livrasand/gitGost&text=Check%20out%20this%20project%20on%20GitHub)
+
+Be a ghost. Fix the internet.
+
+*✨ Thanks for visiting **CodeTrackr**!*
+
+<img src="https://visitor-badge.laobi.icu/badge?page_id=livrasand.CodeTrackr&style=for-the-badge&color=00d4ff" alt="Views">
